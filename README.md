@@ -15,12 +15,10 @@ GLUniverse Stream is a Foundry VTT v13 module for running a clean OBS/browser-ca
 
 ## Installation
 
-Install from Foundry's **Add-on Modules** screen using the module manifest URL from the GitHub release.
-
-After the first release is created, the manifest URL should look like:
+Install from Foundry's **Add-on Modules** screen using this manifest URL:
 
 ```text
-https://github.com/<owner>/<repo>/releases/latest/download/module.json
+https://github.com/patcharapon-j/gluniverse-stream/releases/latest/download/module.json
 ```
 
 ## Setup
@@ -47,7 +45,7 @@ For a Foundry-installable GitHub release, publish these release assets:
 - `module.json`
 - `gluniverse-stream.zip`
 
-The release `module.json` should include repository-specific `manifest` and `download` URLs pointing at the release assets.
+The release `module.json` includes `manifest` and `download` URLs pointing at the release assets.
 
 ## Compatibility
 
