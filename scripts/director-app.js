@@ -60,7 +60,7 @@ export function addStreamSceneControl(controls) {
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
-  restoreScrollTop = null;
+  restoreScroll = null;
 
   static DEFAULT_OPTIONS = {
     id: `${MODULE_ID}-director`,
@@ -143,20 +143,40 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.element.addEventListener("change", event => this.#onChange(event));
     this.element.addEventListener("click", event => this.#onClick(event));
     this.element.addEventListener("submit", event => event.preventDefault());
-    if (this.restoreScrollTop !== null) {
-      const scrollTop = this.restoreScrollTop;
-      this.restoreScrollTop = null;
-      queueMicrotask(() => {
-        const scroller = this.element.querySelector(".gluniverse-stream-director-body") ?? this.element.querySelector(".window-content");
-        if (scroller) scroller.scrollTop = scrollTop;
-      });
+    if (this.restoreScroll) {
+      const scroll = this.restoreScroll;
+      this.restoreScroll = null;
+      queueMicrotask(() => this.#restoreScroll(scroll));
+      requestAnimationFrame(() => this.#restoreScroll(scroll));
+      window.setTimeout(() => this.#restoreScroll(scroll), 0);
     }
   }
 
   renderPreservingScroll() {
-    const scroller = this.element?.querySelector(".gluniverse-stream-director-body") ?? this.element?.querySelector(".window-content");
-    this.restoreScrollTop = scroller?.scrollTop ?? 0;
+    this.#captureScroll();
     return this.render({ force: true });
+  }
+
+  #captureScroll() {
+    const content = this.#windowContentElement();
+    const next = {
+      body: this.element?.querySelector(".gluniverse-stream-director-body")?.scrollTop ?? 0,
+      content: content?.scrollTop ?? 0
+    };
+    this.restoreScroll = this.restoreScroll
+      ? { body: Math.max(this.restoreScroll.body, next.body), content: Math.max(this.restoreScroll.content, next.content) }
+      : next;
+  }
+
+  #restoreScroll(scroll) {
+    const body = this.element?.querySelector(".gluniverse-stream-director-body");
+    const content = this.#windowContentElement();
+    if (body) body.scrollTop = scroll.body;
+    if (content) content.scrollTop = scroll.content;
+  }
+
+  #windowContentElement() {
+    return this.element?.closest(".window-content") ?? this.element?.querySelector(".window-content");
   }
 
   async #onChange(event) {
@@ -209,11 +229,13 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async #setAndRender(key, value) {
+    this.#captureScroll();
     await setSetting(key, value);
     this.renderPreservingScroll();
   }
 
   async #updateObject(key, field, value) {
+    this.#captureScroll();
     const current = key === "cameraSettings" ? getCameraSettings() : key === "chatSettings" ? getChatSettings() : getDialogSettings();
     await setSetting(key, { ...current, [field]: value });
     this.renderPreservingScroll();
