@@ -129,12 +129,9 @@ export class CameraController {
   async applyBounds(bounds, { animate = true, fill = false, clampZoom = true, usePadding = true } = {}) {
     const settings = getCameraSettings();
     const viewport = getViewportSize();
-    const gridPadding = usePadding ? Math.max(0, Number(settings.paddingGridSpaces) || 0) * (canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100) : 0;
-    const percentPadding = usePadding ? Math.max(0, Number(settings.paddingPercent) || 0) / 100 : 0;
-    const padX = viewport.width * percentPadding + gridPadding;
-    const padY = viewport.height * percentPadding + gridPadding;
-    const usableWidth = Math.max(100, viewport.width - (padX * 2));
-    const usableHeight = Math.max(100, viewport.height - (padY * 2));
+    const padding = usePadding ? getCameraPadding(settings, viewport) : { top: 0, right: 0, bottom: 0, left: 0 };
+    const usableWidth = Math.max(100, viewport.width - padding.left - padding.right);
+    const usableHeight = Math.max(100, viewport.height - padding.top - padding.bottom);
     const widthScale = usableWidth / Math.max(1, bounds.width);
     const heightScale = usableHeight / Math.max(1, bounds.height);
     let scale = fill ? Math.max(widthScale, heightScale) : Math.min(widthScale, heightScale);
@@ -146,8 +143,8 @@ export class CameraController {
     }
 
     const position = {
-      x: bounds.x + (bounds.width / 2),
-      y: bounds.y + (bounds.height / 2),
+      x: bounds.x + (bounds.width / 2) - ((padding.left - padding.right) / 2 / scale),
+      y: bounds.y + (bounds.height / 2) - ((padding.top - padding.bottom) / 2 / scale),
       scale,
       duration: animate ? Math.max(0, Number(settings.animationDurationMs) || 0) : 0
     };
@@ -215,6 +212,20 @@ export class CameraController {
       height: "height" in changes ? changes.height : doc.height
     });
   }
+}
+
+function getCameraPadding(settings, viewport) {
+  const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100;
+  return {
+    top: sidePadding(settings.paddingPercentTop, viewport.height, settings.paddingGridSpacesTop, gridSize),
+    right: sidePadding(settings.paddingPercentRight, viewport.width, settings.paddingGridSpacesRight, gridSize),
+    bottom: sidePadding(settings.paddingPercentBottom, viewport.height, settings.paddingGridSpacesBottom, gridSize),
+    left: sidePadding(settings.paddingPercentLeft, viewport.width, settings.paddingGridSpacesLeft, gridSize)
+  };
+}
+
+function sidePadding(percent, viewportSize, gridSpaces, gridSize) {
+  return (Math.max(0, Number(percent) || 0) / 100 * viewportSize) + (Math.max(0, Number(gridSpaces) || 0) * gridSize);
 }
 
 function getCurrentSceneCombat() {

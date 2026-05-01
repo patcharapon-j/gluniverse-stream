@@ -41,9 +41,21 @@
   <div class="form-group"><label>Out-of-combat mode</label><select name="camera.outOfCombatMode">{{#each outOfCombatModeOptions}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/each}}</select></div>
   <div class="form-group"><label>In-combat mode</label><select name="camera.combatMode">{{#each combatModeOptions}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/each}}</select></div>
   <div class="form-group"><label>Scene view</label><select name="camera.sceneViewMode">{{#each sceneViewOptions}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/each}}</select></div>
+  <h3>Percent Padding</h3>
   <div class="gluniverse-stream-number-grid">
-    <label>Padding % <input type="number" name="camera.paddingPercent" value="{{camera.paddingPercent}}" step="1"></label>
-    <label>Grid padding <input type="number" name="camera.paddingGridSpaces" value="{{camera.paddingGridSpaces}}" step="1"></label>
+    <label>Top % <input type="number" name="camera.paddingPercentTop" value="{{camera.paddingPercentTop}}" step="1"></label>
+    <label>Right % <input type="number" name="camera.paddingPercentRight" value="{{camera.paddingPercentRight}}" step="1"></label>
+    <label>Bottom % <input type="number" name="camera.paddingPercentBottom" value="{{camera.paddingPercentBottom}}" step="1"></label>
+    <label>Left % <input type="number" name="camera.paddingPercentLeft" value="{{camera.paddingPercentLeft}}" step="1"></label>
+  </div>
+  <h3>Grid Padding</h3>
+  <div class="gluniverse-stream-number-grid">
+    <label>Top spaces <input type="number" name="camera.paddingGridSpacesTop" value="{{camera.paddingGridSpacesTop}}" step="1"></label>
+    <label>Right spaces <input type="number" name="camera.paddingGridSpacesRight" value="{{camera.paddingGridSpacesRight}}" step="1"></label>
+    <label>Bottom spaces <input type="number" name="camera.paddingGridSpacesBottom" value="{{camera.paddingGridSpacesBottom}}" step="1"></label>
+    <label>Left spaces <input type="number" name="camera.paddingGridSpacesLeft" value="{{camera.paddingGridSpacesLeft}}" step="1"></label>
+  </div>
+  <div class="gluniverse-stream-number-grid">
     <label>Min zoom <input type="number" name="camera.minZoom" value="{{camera.minZoom}}" step="0.05"></label>
     <label>Max zoom <input type="number" name="camera.maxZoom" value="{{camera.maxZoom}}" step="0.05"></label>
     <label>Animation ms <input type="number" name="camera.animationDurationMs" value="{{camera.animationDurationMs}}" step="50"></label>

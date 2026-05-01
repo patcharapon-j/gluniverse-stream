@@ -108,7 +108,19 @@ function sanitizeCameraSettings(value) {
   if (!migrated.outOfCombatMode && source.nonCombatMode) migrated.outOfCombatMode = migrateCameraMode(source.nonCombatMode);
   if (!migrated.combatMode && source.mode) migrated.combatMode = source.mode === "combat" ? CAMERA_MODES.combatants : migrateCameraMode(source.mode);
   if (!migrated.sceneViewMode && source.sceneModeView) migrated.sceneViewMode = source.sceneModeView;
+  migrateSidePadding(migrated, source, "paddingPercent", ["paddingPercentTop", "paddingPercentRight", "paddingPercentBottom", "paddingPercentLeft"]);
+  migrateSidePadding(migrated, source, "paddingGridSpaces", ["paddingGridSpacesTop", "paddingGridSpacesRight", "paddingGridSpacesBottom", "paddingGridSpacesLeft"]);
   return sanitizeObject(migrated, DEFAULT_CAMERA_SETTINGS);
+}
+
+function migrateSidePadding(migrated, source, uniformKey, sideKeys) {
+  const uniform = numberOrDefault(source[uniformKey], DEFAULT_CAMERA_SETTINGS[uniformKey]);
+  for (const key of sideKeys) migrated[key] = numberOrDefault(source[key], uniform);
+}
+
+function numberOrDefault(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function migrateCameraMode(mode) {

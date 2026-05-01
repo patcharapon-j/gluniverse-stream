@@ -271,6 +271,12 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   font-size: 1.05rem;
 }
 
+.gluniverse-stream-director h3 {
+  margin: 0.65rem 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .gluniverse-stream-status-grid,
 .gluniverse-stream-number-grid {
   display: grid;
