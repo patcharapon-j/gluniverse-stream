@@ -1,0 +1,323 @@
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #sidebar:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #sidebar-tabs:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat-log:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat-form:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat-message:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat-controls:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #chat-notifications:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #controls:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #scene-controls:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #navigation:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #scene-navigation:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #nav-toggle:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #scene-list:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #hotbar:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #players:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #pause:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #menu:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #logo:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #notifications:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #tooltip:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #token-hud:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) #measurement-hud:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .chat-sidebar:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .chat-form:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .chat-input:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .chat-message-input:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .scene-controls:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .scene-control:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .scene-navigation:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .scene-nav:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .scene-list:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .control-tool:not(.gluniverse-stream-ui-allowed),
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .token-hud:not(.gluniverse-stream-ui-allowed) {
+  display: none !important;
+}
+
+body.gluniverse-stream-active canvas,
+body.gluniverse-stream-active #board,
+body.gluniverse-stream-active #canvas {
+  visibility: visible !important;
+}
+
+body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream-ui-blocked {
+  display: none !important;
+}
+
+.gluniverse-stream-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.gluniverse-stream-chat-root {
+  position: absolute;
+  display: flex;
+  gap: 0.5rem;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  pointer-events: none;
+}
+
+.gluniverse-stream-chat-root.position-top-left {
+  --stream-chat-enter-x: -56px;
+  --stream-chat-enter-y: -4px;
+  --stream-chat-exit-x: -42px;
+  --stream-chat-exit-y: -2px;
+  top: 1rem;
+  left: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.gluniverse-stream-chat-root.position-top-right {
+  --stream-chat-enter-x: 56px;
+  --stream-chat-enter-y: -4px;
+  --stream-chat-exit-x: 42px;
+  --stream-chat-exit-y: -2px;
+  top: 1rem;
+  right: 1rem;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.gluniverse-stream-chat-root.position-bottom-left {
+  --stream-chat-enter-x: -56px;
+  --stream-chat-enter-y: 4px;
+  --stream-chat-exit-x: -42px;
+  --stream-chat-exit-y: 2px;
+  bottom: 1rem;
+  left: 1rem;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+}
+
+.gluniverse-stream-chat-root.position-bottom-right {
+  --stream-chat-enter-x: 56px;
+  --stream-chat-enter-y: 4px;
+  --stream-chat-exit-x: 42px;
+  --stream-chat-exit-y: 2px;
+  right: 1rem;
+  bottom: 1rem;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+}
+
+.gluniverse-stream-chat-card {
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: top left;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition:
+    max-height 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 430ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 320ms ease;
+  filter: drop-shadow(0 0.35rem 0.8rem rgba(0, 0, 0, 0.45));
+  will-change: opacity, transform, filter;
+}
+
+.gluniverse-stream-chat-card > .chat-message,
+.gluniverse-stream-chat-card > .message {
+  box-sizing: border-box;
+  display: block !important;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+.gluniverse-stream-chat-card .message-header {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  height: auto !important;
+  line-height: normal;
+  margin-block-start: 0;
+  gap: 0.35rem;
+  overflow: visible;
+}
+
+.gluniverse-stream-chat-card .message-header .message-sender,
+.gluniverse-stream-chat-card .message-header .message-metadata,
+.gluniverse-stream-chat-card .message-header h4 {
+  line-height: 1.2;
+}
+
+.gluniverse-stream-chat-card .message-header img,
+.gluniverse-stream-chat-card .message-header img.avatar,
+.gluniverse-stream-chat-card img.avatar,
+.gluniverse-stream-chat-card .message-avatar img,
+.gluniverse-stream-chat-card .avatar img,
+.gluniverse-stream-chat-card .portrait img,
+.gluniverse-stream-chat-card .actor-image img,
+.gluniverse-stream-chat-card .token-image img {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+  margin-block: 0;
+  align-self: center;
+  vertical-align: middle;
+}
+
+.gluniverse-stream-chat-card .message-avatar,
+.gluniverse-stream-chat-card .message-header .avatar,
+.gluniverse-stream-chat-card .message-header .portrait,
+.gluniverse-stream-chat-card .actor-image,
+.gluniverse-stream-chat-card .token-image {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  max-height: none;
+  display: block;
+  overflow: hidden;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.gluniverse-stream-chat-card .message-sender {
+  min-width: 0;
+}
+
+.position-top-right .gluniverse-stream-chat-card,
+.position-bottom-right .gluniverse-stream-chat-card {
+  transform-origin: top right;
+}
+
+.position-bottom-left .gluniverse-stream-chat-card,
+.position-bottom-right .gluniverse-stream-chat-card {
+  transform-origin: bottom center;
+}
+
+.gluniverse-stream-chat-card.gluniverse-stream-entering {
+  max-height: 0;
+  opacity: 0;
+  transform: translate3d(var(--stream-chat-enter-x, 0), var(--stream-chat-enter-y, 0), 0) scale(0.98);
+  filter: blur(1.5px) drop-shadow(0 0.2rem 0.45rem rgba(0, 0, 0, 0.28));
+}
+
+.gluniverse-stream-chat-card.gluniverse-stream-exiting {
+  max-height: 0 !important;
+  opacity: 0;
+  transform: translate3d(var(--stream-chat-exit-x, 0), var(--stream-chat-exit-y, 0), 0) scale(0.985);
+  transition:
+    max-height 320ms cubic-bezier(0.55, 0, 1, 0.45),
+    opacity 240ms cubic-bezier(0.55, 0, 1, 0.45),
+    transform 340ms cubic-bezier(0.55, 0, 1, 0.45),
+    filter 240ms ease;
+  filter: blur(1.5px) drop-shadow(0 0.2rem 0.4rem rgba(0, 0, 0, 0.22));
+}
+
+.gluniverse-stream-dialog-root {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.gluniverse-stream-centered-dialog {
+  position: static !important;
+  inset: auto !important;
+  margin: 0 !important;
+  pointer-events: auto;
+  transform: none !important;
+  max-width: min(90vw, 46rem);
+  max-height: 86vh;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
+}
+
+.gluniverse-stream-track-token.active,
+.gluniverse-stream-track-token:hover {
+  color: #f5d76e;
+}
+
+.gluniverse-stream-director {
+  --stream-border: rgba(255, 255, 255, 0.16);
+}
+
+.gluniverse-stream-director .window-content {
+  padding: 0.75rem;
+  overflow-y: auto;
+}
+
+.gluniverse-stream-director-body {
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+  padding-inline-end: 0.25rem;
+}
+
+.gluniverse-stream-director section.gluniverse-stream-panel {
+  border: 1px solid var(--stream-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-block-end: 0.75rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.gluniverse-stream-director h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.gluniverse-stream-status-grid,
+.gluniverse-stream-number-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.gluniverse-stream-actions,
+.gluniverse-stream-selector-rule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.gluniverse-stream-user-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.gluniverse-stream-director table {
+  width: 100%;
+}
+
+.gluniverse-stream-director th,
+.gluniverse-stream-director td {
+  vertical-align: top;
+}
+
+.gluniverse-stream-director code {
+  user-select: text;
+  white-space: nowrap;
+}
+
+.gluniverse-stream-selector-rules {
+  margin-block: 0.5rem 0;
+  padding-inline-start: 1.25rem;
+}
+
+@media (max-width: 720px) {
+  .gluniverse-stream-chat-root {
+    max-width: calc(100vw - 2rem);
+  }
+
+  .gluniverse-stream-director .window-content {
+    padding: 0.5rem;
+  }
+}

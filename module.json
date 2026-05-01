@@ -1,0 +1,28 @@
+{
+  "id": "gluniverse-stream",
+  "title": "GLUniverse Stream",
+  "description": "OBS-friendly stream client mode with overlays, director controls, and camera framing.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "GLUniverse"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/stream.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ]
+}
