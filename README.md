@@ -5,7 +5,7 @@ GLUniverse Stream is a Foundry VTT v13 module for running a clean OBS/browser-ca
 ## Features
 
 - Dedicated stream-user mode with local opt-in prompt.
-- Optional "Always Enter Stream Mode" startup choice, revokable by a Stream Director.
+- Optional "Always Enter Stream Mode" startup choice, configurable by a Stream Director.
 - Director panel for stream start/stop, UI restore, camera settings, tracked tokens, chat settings, and overlay visibility rules.
 - Camera modes for manual/free camera, full scene background, tracked tokens, visible party tokens, and visible combatants.
 - Stream-client-side camera visibility checks so fog/hidden-token visibility stays under Foundry's normal client rules.
@@ -28,7 +28,7 @@ https://github.com/patcharapon-j/gluniverse-stream/releases/latest/download/modu
 3. Select the dedicated stream user in **Stream user**.
 4. Log in as that stream user in the browser or OBS capture client.
 5. Accept the startup prompt, or choose **Always Enter Stream Mode** to skip the prompt on future startups.
-6. Use the Director panel to configure camera mode, tracked tokens, chat overlay placement, dialog lifetime, and UI visibility.
+6. Use the Director panel to configure camera mode, tracked tokens, chat overlay placement and offset, dialog lifetime, and UI visibility.
 
 ## Camera Modes
 

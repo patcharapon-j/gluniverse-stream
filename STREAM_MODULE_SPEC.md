@@ -85,6 +85,8 @@ Default settings:
   },
   "chatSettings": {
     "position": "top-left",
+    "offsetX": 0,
+    "offsetY": 0,
     "lifetimeMs": 10000,
     "maxVisible": 5
   },
@@ -127,11 +129,11 @@ The Director uses Foundry v13 `ApplicationV2` and every template part must rende
 Required sections:
 
 - Status: stream user, connected state, last reported active state, current scene, camera mode.
-- Session controls: request start, stop, toggle UI restore, reframe now.
+- Session controls: request start, stop stream mode on the stream client, toggle normal Foundry UI visibility on the stream client, enable/revoke stream-user auto-start, reframe now.
 - Users: select stream user and trusted Directors.
 - Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, animation duration, exclude defeated.
 - Tracking: current canvas tokens with manual track toggle.
-- Chat overlay: position, lifetime, max visible.
+- Chat overlay: position, x/y pixel offset, lifetime, max visible.
 - Dialog overlay: lifetime.
 - UI rules: best-effort detected UI and expert selector rules.
 
@@ -168,7 +170,7 @@ Reframing triggers:
 - Token create/delete/update affecting position, size, or hidden state.
 - Manual tracked token changes.
 - Combat start, turn/round changes, combat update, and combatant defeated changes.
-- Director reframe request.
+- Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target.
 
 ## Token Tracking
 
@@ -186,6 +188,7 @@ Reframing triggers:
 - Each card expires independently.
 - If visible cards exceed `maxVisible`, remove the oldest.
 - Position is one of `top-left`, `top-right`, `bottom-left`, `bottom-right`.
+- `offsetX` and `offsetY` move the overlay in pixels from the selected position.
 
 ## Dialog Overlay
 

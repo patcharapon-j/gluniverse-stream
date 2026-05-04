@@ -21,8 +21,9 @@
   </div>
   <div class="gluniverse-stream-actions">
     <button type="button" data-action="start"><i class="fas fa-play"></i> Request Start</button>
-    <button type="button" data-action="stop"><i class="fas fa-stop"></i> Stop</button>
-    <button type="button" data-action="toggle-restore"><i class="fas fa-eye"></i> Toggle UI Restore</button>
+    <button type="button" data-action="stop" {{status.stopDisabled}} title="Exit stream mode on the stream client"><i class="fas fa-stop"></i> Stop Stream Mode</button>
+    <button type="button" data-action="toggle-restore" {{status.restoreDisabled}} title="Temporarily show or hide normal Foundry UI on the stream client"><i class="fas fa-eye"></i> Toggle Stream UI</button>
+    {{#if status.autoStartCanEnable}}<button type="button" data-action="enable-auto-start"><i class="fas fa-bolt"></i> Always Enter Stream Mode</button>{{/if}}
     {{#if status.autoStartEnabled}}<button type="button" data-action="revoke-auto-start"><i class="fas fa-ban"></i> Revoke Auto-start</button>{{/if}}
   </div>
 </section>
@@ -61,7 +62,7 @@
     <label>Animation ms <input type="number" name="camera.animationDurationMs" value="{{camera.animationDurationMs}}" step="50"></label>
     <label><input type="checkbox" name="camera.excludeDefeated" {{#if camera.excludeDefeated}}checked{{/if}}> Exclude defeated</label>
   </div>
-  <button type="button" data-action="reframe"><i class="fas fa-crosshairs"></i> Reframe Now</button>
+  <button type="button" data-action="reframe" {{status.reframeDisabled}} title="Ask the active stream client to frame the current camera target; falls back to the scene if the active mode has no target"><i class="fas fa-crosshairs"></i> Reframe Now</button>
 </section>
 
 <section class="gluniverse-stream-panel">
@@ -85,6 +86,8 @@
   <h2>Chat Overlay</h2>
   <div class="form-group"><label>Position</label><select name="chat.position">{{#each chatPositionOptions}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/each}}</select></div>
   <div class="gluniverse-stream-number-grid">
+    <label>X offset px <input type="number" name="chat.offsetX" value="{{chat.offsetX}}" step="1"></label>
+    <label>Y offset px <input type="number" name="chat.offsetY" value="{{chat.offsetY}}" step="1"></label>
     <label>Lifetime ms <input type="number" name="chat.lifetimeMs" value="{{chat.lifetimeMs}}" step="500"></label>
     <label>Max visible <input type="number" name="chat.maxVisible" value="{{chat.maxVisible}}" step="1"></label>
   </div>

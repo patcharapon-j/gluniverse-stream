@@ -60,6 +60,7 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   width: 320px;
   max-width: calc(100vw - 2rem);
   pointer-events: none;
+  transform: translate3d(var(--stream-chat-offset-x, 0px), var(--stream-chat-offset-y, 0px), 0);
 }
 
 .gluniverse-stream-chat-root.position-top-left {

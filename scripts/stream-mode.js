@@ -34,7 +34,10 @@ export class StreamMode {
 
   activate({ notify = true } = {}) {
     if (!this.isStreamUser) return;
-    if (this.active) return;
+    if (this.active) {
+      this.reportStatus();
+      return false;
+    }
     this.active = true;
     this.restoreVisible = false;
     document.body.classList.add(CLASSES.active);
@@ -43,10 +46,14 @@ export class StreamMode {
     emitClientStatus({ active: true, restoreVisible: false, sceneId: canvas?.scene?.id ?? null });
     Hooks.callAll(`${MODULE_ID}.streamModeChanged`, true);
     if (notify) ui.notifications?.info(game.i18n.localize("GLUNIVERSE_STREAM.notifications.streamStarted"));
+    return true;
   }
 
   deactivate({ notify = true } = {}) {
-    if (!this.active) return;
+    if (!this.active) {
+      this.reportStatus();
+      return false;
+    }
     this.active = false;
     this.restoreVisible = false;
     document.body.classList.remove(CLASSES.active, CLASSES.restore);
@@ -55,6 +62,7 @@ export class StreamMode {
     emitClientStatus({ active: false, restoreVisible: false, sceneId: canvas?.scene?.id ?? null });
     Hooks.callAll(`${MODULE_ID}.streamModeChanged`, false);
     if (notify) ui.notifications?.info(game.i18n.localize("GLUNIVERSE_STREAM.notifications.streamStopped"));
+    return true;
   }
 
   reportStatus() {
@@ -63,7 +71,10 @@ export class StreamMode {
   }
 
   toggleRestore() {
-    if (!this.active) return false;
+    if (!this.active) {
+      this.reportStatus();
+      return false;
+    }
     this.restoreVisible = !this.restoreVisible;
     document.body.classList.toggle(CLASSES.restore, this.restoreVisible);
     emitClientStatus({ active: true, restoreVisible: this.restoreVisible, sceneId: canvas?.scene?.id ?? null });

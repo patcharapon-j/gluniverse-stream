@@ -106,6 +106,7 @@ async function handleStreamCommand(command, payload) {
       break;
     case STREAM_COMMANDS.reframe:
       services.streamMode?.reportStatus();
+      if (!services.streamMode?.active) break;
       await services.camera?.reframe(payload ?? {});
       services.streamMode?.reportStatus();
       break;

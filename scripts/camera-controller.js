@@ -52,7 +52,7 @@ export class CameraController {
   }
 
   requestReframe(payload = {}) {
-    sendStreamCommand(STREAM_COMMANDS.reframe, { force: true, ...payload });
+    sendStreamCommand(STREAM_COMMANDS.reframe, { force: true, explicit: true, ...payload });
   }
 
   scheduleReframe(options = {}) {
@@ -67,16 +67,16 @@ export class CameraController {
     this.pending = window.setTimeout(() => this.reframe(options), delay);
   }
 
-  async reframe({ animate = true, force = false } = {}) {
+  async reframe({ animate = true, force = false, explicit = false } = {}) {
     this.pending = null;
     if (!canvas?.ready || (!this.streamMode.active && !force)) return false;
     const settings = getCameraSettings();
     const mode = this.getEffectiveMode(settings);
-    if (mode === CAMERA_MODES.manual) return false;
+    if (mode === CAMERA_MODES.manual) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode }) : false;
     if (mode === CAMERA_MODES.scene) return this.frameScene({ animate, viewMode: settings.sceneViewMode });
 
     const tokens = this.getTokensForMode(mode, settings);
-    if (!tokens.length) return false;
+    if (!tokens.length) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode }) : false;
     return this.frameTokenBounds(tokens, { animate });
   }
 

@@ -62,6 +62,8 @@ export const DEFAULT_CAMERA_SETTINGS = {
 
 export const DEFAULT_CHAT_SETTINGS = {
   position: "top-left",
+  offsetX: 0,
+  offsetY: 0,
   lifetimeMs: 10000,
   maxVisible: 5
 };

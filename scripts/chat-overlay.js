@@ -75,8 +75,11 @@ export class ChatOverlay {
   applySettings() {
     if (!this.streamMode.active) return;
     const root = this.streamMode.getChatRoot();
-    const position = getChatSettings().position;
+    const settings = getChatSettings();
+    const position = settings.position;
     root.className = `${CLASSES.chatRoot} position-${position}`;
+    root.style.setProperty("--stream-chat-offset-x", `${numberOrZero(settings.offsetX)}px`);
+    root.style.setProperty("--stream-chat-offset-y", `${numberOrZero(settings.offsetY)}px`);
   }
 
   removeCard(card, immediate = false) {
@@ -207,6 +210,11 @@ function getLatestRenderedMessage(source, message, messageId) {
 
 function cssEscape(value) {
   return globalThis.CSS?.escape ? globalThis.CSS.escape(String(value)) : String(value).replace(/["\\]/g, "\\$&");
+}
+
+function numberOrZero(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function delay(ms) {

@@ -88,14 +88,20 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const streamUserId = getSetting("streamUserId");
     const autoStartIds = getSetting("autoStartStreamUserIds") ?? [];
     const trusted = new Set(getSetting("trustedDirectorUserIds") ?? []);
+    const streamConnected = Boolean(streamUserId && game.users?.get(streamUserId)?.active);
+    const streamActive = Boolean(status?.active);
     return {
       ...(await super._prepareContext(options)),
       status: {
         stream: status ? (status.active ? "Active" : "Inactive") : "No report yet",
         restore: status ? (status.restoreVisible ? "Temporarily visible" : "Hidden") : "No report yet",
-        connected: Boolean(streamUserId && game.users?.get(streamUserId)?.active),
+        connected: streamConnected,
+        stopDisabled: streamActive ? "" : "disabled",
+        restoreDisabled: streamActive ? "" : "disabled",
+        reframeDisabled: streamActive ? "" : "disabled",
         autoStart: streamUserId && autoStartIds.includes(streamUserId) ? "Enabled" : "Disabled",
         autoStartEnabled: Boolean(streamUserId && autoStartIds.includes(streamUserId)),
+        autoStartCanEnable: Boolean(streamUserId && !autoStartIds.includes(streamUserId)),
         scene: canvas?.scene?.name ?? game.i18n.localize("GLUNIVERSE_STREAM.common.none"),
         mode: cameraModeLabel(activeMode),
         combat: getCurrentSceneCombat() ? "Yes" : "No"
@@ -207,8 +213,10 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         return sendStreamCommand(STREAM_COMMANDS.stop);
       case "toggle-restore":
         return sendStreamCommand(STREAM_COMMANDS.toggleRestore);
+      case "enable-auto-start":
+        return this.#setAutoStart(true);
       case "revoke-auto-start":
-        return this.#revokeAutoStart();
+        return this.#setAutoStart(false);
       case "reframe":
         requestStreamClientStatus();
         return services.camera?.requestReframe({ force: true });
@@ -253,10 +261,14 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
-  async #revokeAutoStart() {
+  async #setAutoStart(enabled) {
     const streamUserId = getSetting("streamUserId");
-    const ids = (getSetting("autoStartStreamUserIds") ?? []).filter(id => id !== streamUserId);
-    await setSetting("autoStartStreamUserIds", ids);
+    if (!streamUserId) return;
+    this.#captureScroll();
+    const ids = new Set(getSetting("autoStartStreamUserIds") ?? []);
+    if (enabled) ids.add(streamUserId);
+    else ids.delete(streamUserId);
+    await setSetting("autoStartStreamUserIds", Array.from(ids));
     this.renderPreservingScroll();
   }
 }
