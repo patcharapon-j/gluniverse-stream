@@ -11,7 +11,9 @@ export const CLASSES = {
   allowedUi: "gluniverse-stream-ui-allowed",
   centeredDialog: "gluniverse-stream-centered-dialog",
   imagePresentation: "gluniverse-stream-image-presentation",
-  journalPresentation: "gluniverse-stream-journal-presentation"
+  journalPresentation: "gluniverse-stream-journal-presentation",
+  manualCloseDialog: "gluniverse-stream-manual-close-dialog",
+  dialogRootInteractive: "gluniverse-stream-dialog-root-interactive"
 };
 
 export const FLAGS = {

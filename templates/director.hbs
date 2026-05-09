@@ -95,7 +95,8 @@
 
 <section class="gluniverse-stream-panel">
   <h2>Dialog Overlay</h2>
-  <label>Lifetime ms <input type="number" name="dialog.lifetimeMs" value="{{dialog.lifetimeMs}}" step="500"></label>
+  <label>Lifetime ms <input type="number" name="dialog.lifetimeMs" value="{{dialog.lifetimeMs}}" step="500" min="0"></label>
+  <p class="gluniverse-stream-form-hint"><small>Set to 0 to keep dialogs, images, and journals open until the stream user taps outside the dialog to dismiss them.</small></p>
 </section>
 
 <section class="gluniverse-stream-panel">

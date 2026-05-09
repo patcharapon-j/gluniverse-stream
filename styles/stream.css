@@ -228,6 +228,16 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   pointer-events: none;
 }
 
+.gluniverse-stream-dialog-root-interactive {
+  pointer-events: auto;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.gluniverse-stream-dialog-root-interactive .gluniverse-stream-centered-dialog {
+  cursor: default;
+}
+
 .gluniverse-stream-centered-dialog {
   position: static !important;
   inset: auto !important;
@@ -386,6 +396,11 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 .gluniverse-stream-selector-rules {
   margin-block: 0.5rem 0;
   padding-inline-start: 1.25rem;
+}
+
+.gluniverse-stream-director .gluniverse-stream-form-hint {
+  margin: 0.35rem 0 0;
+  opacity: 0.75;
 }
 
 @media (max-width: 720px) {
