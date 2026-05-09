@@ -144,11 +144,15 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     };
   }
 
-  async _onRender(context, options) {
-    await super._onRender(context, options);
+  async _onFirstRender(context, options) {
+    await super._onFirstRender(context, options);
     this.element.addEventListener("change", event => this.#onChange(event));
     this.element.addEventListener("click", event => this.#onClick(event));
     this.element.addEventListener("submit", event => event.preventDefault());
+  }
+
+  async _onRender(context, options) {
+    await super._onRender(context, options);
     if (this.restoreScroll) {
       const scroll = this.restoreScroll;
       this.restoreScroll = null;
@@ -221,32 +225,30 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         requestStreamClientStatus();
         return services.camera?.requestReframe({ force: true });
       case "toggle-token":
-        await services.tokenTracking?.toggleTokenById(button.dataset.tokenId);
-        return this.renderPreservingScroll();
+        this.#captureScroll();
+        return services.tokenTracking?.toggleTokenById(button.dataset.tokenId);
       case "ui-allow":
       case "ui-block":
       case "ui-default":
-        await services.uiDetector?.setElementRule(button.dataset.ruleId, action.replace("ui-", ""));
-        return this.renderPreservingScroll();
+        this.#captureScroll();
+        return services.uiDetector?.setElementRule(button.dataset.ruleId, action.replace("ui-", ""));
       case "selector-add":
         return this.#addSelectorRule();
       case "selector-remove":
-        await services.uiDetector?.removeSelectorRule(button.dataset.ruleId);
-        return this.renderPreservingScroll();
+        this.#captureScroll();
+        return services.uiDetector?.removeSelectorRule(button.dataset.ruleId);
     }
   }
 
   async #setAndRender(key, value) {
     this.#captureScroll();
     await setSetting(key, value);
-    this.renderPreservingScroll();
   }
 
   async #updateObject(key, field, value) {
     this.#captureScroll();
     const current = key === "cameraSettings" ? getCameraSettings() : key === "chatSettings" ? getChatSettings() : getDialogSettings();
     await setSetting(key, { ...current, [field]: value });
-    this.renderPreservingScroll();
   }
 
   async #addSelectorRule() {
@@ -254,8 +256,8 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const action = this.element.querySelector("select[name='selectorRule.action']")?.value;
     if (!selector) return;
     try {
+      this.#captureScroll();
       await services.uiDetector?.addSelectorRule(selector, action);
-      this.renderPreservingScroll();
     } catch (error) {
       ui.notifications?.warn(game.i18n.localize("GLUNIVERSE_STREAM.notifications.invalidSelector"));
     }
@@ -269,7 +271,6 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (enabled) ids.add(streamUserId);
     else ids.delete(streamUserId);
     await setSetting("autoStartStreamUserIds", Array.from(ids));
-    this.renderPreservingScroll();
   }
 }
 
