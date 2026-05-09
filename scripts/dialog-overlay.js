@@ -26,6 +26,9 @@ export class DialogOverlay {
     if (this.timers.has(key)) return;
 
     element.classList.add(CLASSES.centeredDialog);
+    const kind = classifyPresentation(app, element);
+    if (kind === "image") element.classList.add(CLASSES.imagePresentation);
+    else if (kind === "journal") element.classList.add(CLASSES.journalPresentation);
     this.streamMode.getDialogRoot().append(element);
 
     const timeout = window.setTimeout(() => this.closeApplication(key, app, element), getLifetimeMs());
@@ -65,6 +68,20 @@ function isStreamPresentation(app, element) {
     || element.classList.contains("dialog")
     || element.matches(".image-popout, .journal-sheet, .journal-entry, .journal-entry-page")
     || element.querySelector(".dialog-buttons, [data-dialog-button], .journal-entry-content, .journal-page-content, img[data-action='showImage']");
+}
+
+function classifyPresentation(app, element) {
+  const className = app?.constructor?.name ?? "";
+  const documentName = app?.document?.documentName ?? app?.object?.documentName ?? "";
+  if (className.includes("ImagePopout")
+    || element.matches(".image-popout")
+    || element.classList.contains("image-popout")
+    || element.querySelector(".window-content > img, .image-popout img")) return "image";
+  if (className.includes("Journal")
+    || documentName.includes("Journal")
+    || element.matches(".journal-sheet, .journal-entry, .journal-entry-page")
+    || element.querySelector(".journal-entry-content, .journal-page-content")) return "journal";
+  return "dialog";
 }
 
 function getLifetimeMs() {

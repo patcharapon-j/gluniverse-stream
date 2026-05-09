@@ -239,6 +239,75 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
 }
 
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation,
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation {
+  width: 92vw !important;
+  height: 92vh !important;
+  max-width: 92vw !important;
+  max-height: 92vh !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation .window-content,
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .window-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation .window-content > *,
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation figure,
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation picture {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation img,
+.gluniverse-stream-centered-dialog.gluniverse-stream-image-presentation video {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain;
+  display: block;
+}
+
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .journal-entry-pages,
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .journal-entry-content,
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .journal-page-content {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .journal-page-content img,
+.gluniverse-stream-centered-dialog.gluniverse-stream-journal-presentation .journal-entry-content img {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .gluniverse-stream-track-token.active,
 .gluniverse-stream-track-token:hover {
   color: #f5d76e;
