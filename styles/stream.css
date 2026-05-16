@@ -112,36 +112,78 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   max-width: calc(100vw - 2rem);
   overflow: hidden;
   pointer-events: none;
+  position: relative;
+  isolation: isolate;
+  border-radius: 8px;
   transform-origin: top left;
   opacity: 1;
   transform: translate3d(0, 0, 0) scale(1);
   transition:
-    max-height 380ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 430ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 320ms ease;
-  filter: drop-shadow(0 0.35rem 0.8rem rgba(0, 0, 0, 0.45));
-  will-change: opacity, transform, filter;
+    max-height 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    margin 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 620ms cubic-bezier(0.34, 1.32, 0.5, 1),
+    filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter:
+    drop-shadow(0 0.55rem 1.1rem rgba(0, 0, 0, 0.48))
+    drop-shadow(0 0.15rem 0.35rem rgba(0, 0, 0, 0.32));
+  will-change: opacity, transform, filter, max-height;
+}
+
+.gluniverse-stream-chat-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    115deg,
+    transparent 28%,
+    rgba(255, 255, 255, 0.22) 46%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0.22) 54%,
+    transparent 72%
+  );
+  transform: translateX(-130%);
+  opacity: 0;
+}
+
+.gluniverse-stream-chat-card:not(.gluniverse-stream-entering):not(.gluniverse-stream-exiting)::after {
+  animation: gluniverse-stream-sheen 1400ms cubic-bezier(0.22, 1, 0.36, 1) 380ms 1 forwards;
+}
+
+@keyframes gluniverse-stream-sheen {
+  0%   { transform: translateX(-130%); opacity: 0; }
+  18%  { opacity: 0.9; }
+  100% { transform: translateX(140%); opacity: 0; }
 }
 
 .gluniverse-stream-chat-card > .chat-message,
 .gluniverse-stream-chat-card > .message {
   box-sizing: border-box;
-  display: block !important;
   width: 100%;
   max-width: 100%;
   margin: 0;
 }
 
+/*
+  Default header layout for unthemed chat. Themed modules (Dorako UI etc.)
+  apply their own grid/flex via .with-image/.no-image markers — defer to those
+  by scoping our flex fallback to headers without those classes, and by
+  avoiding !important on layout properties.
+*/
 .gluniverse-stream-chat-card .message-header {
-  display: flex;
   align-items: center;
-  min-height: 42px;
-  height: auto !important;
   line-height: normal;
   margin-block-start: 0;
   gap: 0.35rem;
   overflow: visible;
+}
+
+.gluniverse-stream-chat-card .message-header:not(.with-image):not(.no-image) {
+  display: flex;
+  min-height: 42px;
 }
 
 .gluniverse-stream-chat-card .message-header .message-sender,
@@ -150,41 +192,17 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   line-height: 1.2;
 }
 
-.gluniverse-stream-chat-card .message-header img,
-.gluniverse-stream-chat-card .message-header img.avatar,
-.gluniverse-stream-chat-card img.avatar,
-.gluniverse-stream-chat-card .message-avatar img,
-.gluniverse-stream-chat-card .avatar img,
-.gluniverse-stream-chat-card .portrait img,
-.gluniverse-stream-chat-card .actor-image img,
-.gluniverse-stream-chat-card .token-image img {
+.gluniverse-stream-chat-card .message-header > img.gluniverse-stream-speaker-avatar {
   flex: 0 0 36px;
   width: 36px;
   height: 36px;
   min-width: 36px;
-  max-height: none;
   object-fit: contain;
   object-position: center;
   margin-block: 0;
   align-self: center;
   vertical-align: middle;
-}
-
-.gluniverse-stream-chat-card .message-avatar,
-.gluniverse-stream-chat-card .message-header .avatar,
-.gluniverse-stream-chat-card .message-header .portrait,
-.gluniverse-stream-chat-card .actor-image,
-.gluniverse-stream-chat-card .token-image {
-  flex: 0 0 36px;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  max-height: none;
   display: block;
-  overflow: hidden;
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
 }
 
 .gluniverse-stream-chat-card .message-sender {
@@ -203,21 +221,45 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 
 .gluniverse-stream-chat-card.gluniverse-stream-entering {
   max-height: 0;
+  margin-block: 0;
   opacity: 0;
-  transform: translate3d(var(--stream-chat-enter-x, 0), var(--stream-chat-enter-y, 0), 0) scale(0.98);
-  filter: blur(1.5px) drop-shadow(0 0.2rem 0.45rem rgba(0, 0, 0, 0.28));
+  transform: translate3d(var(--stream-chat-enter-x, 0), var(--stream-chat-enter-y, 0), 0) scale(0.92);
+  filter:
+    blur(3px)
+    drop-shadow(0 0.1rem 0.35rem rgba(0, 0, 0, 0.18));
 }
 
 .gluniverse-stream-chat-card.gluniverse-stream-exiting {
   max-height: 0 !important;
+  margin-block: 0 !important;
   opacity: 0;
-  transform: translate3d(var(--stream-chat-exit-x, 0), var(--stream-chat-exit-y, 0), 0) scale(0.985);
+  transform: translate3d(var(--stream-chat-exit-x, 0), var(--stream-chat-exit-y, 0), 0) scale(0.96);
   transition:
-    max-height 320ms cubic-bezier(0.55, 0, 1, 0.45),
-    opacity 240ms cubic-bezier(0.55, 0, 1, 0.45),
-    transform 340ms cubic-bezier(0.55, 0, 1, 0.45),
-    filter 240ms ease;
-  filter: blur(1.5px) drop-shadow(0 0.2rem 0.4rem rgba(0, 0, 0, 0.22));
+    max-height 380ms cubic-bezier(0.5, 0, 0.75, 0),
+    margin 340ms cubic-bezier(0.5, 0, 0.75, 0),
+    opacity 280ms cubic-bezier(0.5, 0, 0.75, 0),
+    transform 420ms cubic-bezier(0.6, 0, 0.85, 0.15),
+    filter 300ms ease-in;
+  filter:
+    blur(3px)
+    drop-shadow(0 0.1rem 0.3rem rgba(0, 0, 0, 0.16));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gluniverse-stream-chat-card,
+  .gluniverse-stream-chat-card.gluniverse-stream-entering,
+  .gluniverse-stream-chat-card.gluniverse-stream-exiting {
+    transition:
+      opacity 180ms linear,
+      max-height 220ms linear !important;
+    transform: none !important;
+    filter: drop-shadow(0 0.35rem 0.8rem rgba(0, 0, 0, 0.45)) !important;
+  }
+
+  .gluniverse-stream-chat-card::after {
+    animation: none !important;
+    display: none;
+  }
 }
 
 .gluniverse-stream-dialog-root {

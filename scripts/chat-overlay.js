@@ -5,11 +5,13 @@ export class ChatOverlay {
   constructor(streamMode) {
     this.streamMode = streamMode;
     this.cards = [];
-    this.seenMessageIds = new Set();
+    this.cardsByMessageId = new Map();
   }
 
   registerHooks() {
-    Hooks.on("renderChatMessageHTML", (message, html) => this.addRenderedMessage(message, html));
+    Hooks.on("renderChatMessageHTML", (message, html) => this.handleRenderedMessage(message, html));
+    Hooks.on("updateChatMessage", message => this.handleMessageUpdate(message));
+    Hooks.on("deleteChatMessage", message => this.handleMessageDelete(message));
     Hooks.on(`${MODULE_ID}.settingsChanged`, key => {
       if (key === "chatSettings") this.applySettings();
     });
@@ -19,26 +21,58 @@ export class ChatOverlay {
     });
   }
 
-  addRenderedMessage(message, html) {
+  handleRenderedMessage(message, html) {
     if (!this.streamMode.active) return;
     const source = getElement(html);
     if (!source) return;
     const messageId = message?.id ?? message?.uuid ?? source.dataset.messageId ?? source.dataset.messageUuid;
+
     if (messageId) {
-      if (this.seenMessageIds.has(messageId)) return;
-      this.seenMessageIds.add(messageId);
+      const existing = this.cardsByMessageId.get(messageId);
+      if (existing) {
+        if (existing.element?.isConnected) this.refreshCardContents(existing, message, source);
+        return;
+      }
     }
 
-    this.addRenderedMessageAfterDice(message, source, messageId);
+    const placeholder = { pending: true, messageId };
+    if (messageId) this.cardsByMessageId.set(messageId, placeholder);
+    this.createCardAfterDice(message, source, messageId, placeholder);
   }
 
-  async addRenderedMessageAfterDice(message, source, messageId) {
+  handleMessageUpdate(message) {
+    if (!this.streamMode.active) return;
+    const id = message?.id;
+    if (!id) return;
+    const record = this.cardsByMessageId.get(id);
+    if (!record?.element?.isConnected) return;
+    window.requestAnimationFrame(() => {
+      const latest = getLatestRenderedMessage(null, message, id);
+      if (latest) this.refreshCardContents(record, message, latest);
+    });
+  }
+
+  handleMessageDelete(message) {
+    const id = message?.id;
+    if (!id) return;
+    const record = this.cardsByMessageId.get(id);
+    if (record?.element?.isConnected) this.removeCard(record.element);
+    else this.cardsByMessageId.delete(id);
+  }
+
+  async createCardAfterDice(message, source, messageId, placeholder) {
     await waitForDiceAnimation(message);
     await nextFrame();
-    if (!this.streamMode.active) return;
+    if (!this.streamMode.active) {
+      if (messageId && this.cardsByMessageId.get(messageId) === placeholder) this.cardsByMessageId.delete(messageId);
+      return;
+    }
 
-    source = getLatestRenderedMessage(source, message, messageId);
-    if (!source) return;
+    const latest = getLatestRenderedMessage(source, message, messageId) ?? source;
+    if (!latest) {
+      if (messageId && this.cardsByMessageId.get(messageId) === placeholder) this.cardsByMessageId.delete(messageId);
+      return;
+    }
 
     const settings = getChatSettings();
     const root = this.streamMode.getChatRoot();
@@ -46,19 +80,18 @@ export class ChatOverlay {
 
     const card = document.createElement("div");
     card.className = "gluniverse-stream-chat-card gluniverse-stream-entering";
-    const clone = source.cloneNode(true);
-    clone.removeAttribute("id");
-    clone.classList.add("gluniverse-stream-chat-message-clone");
-    normalizeImages(clone, message);
-    card.append(clone);
+    if (messageId) card.dataset.streamMessageId = messageId;
+    card.append(this.buildClone(latest, message));
     root.append(card);
     card.style.maxHeight = "0px";
 
     const record = {
       element: card,
+      messageId,
       timeout: window.setTimeout(() => this.removeCard(card), Math.max(0, Number(settings.lifetimeMs) || 0))
     };
     this.cards.push(record);
+    if (messageId) this.cardsByMessageId.set(messageId, record);
 
     window.requestAnimationFrame(() => {
       card.style.maxHeight = `${card.scrollHeight}px`;
@@ -70,6 +103,31 @@ export class ChatOverlay {
     while (this.cards.length > Math.max(1, Number(settings.maxVisible) || 5)) {
       this.removeCard(this.cards[0].element, true);
     }
+  }
+
+  refreshCardContents(record, message, source) {
+    const card = record?.element;
+    if (!card?.isConnected) return;
+    const latest = getLatestRenderedMessage(source, message, record.messageId) ?? source;
+    if (!latest) return;
+    const newClone = this.buildClone(latest, message);
+    const oldClone = card.querySelector(".gluniverse-stream-chat-message-clone");
+    if (oldClone) oldClone.replaceWith(newClone);
+    else card.append(newClone);
+    if (!card.classList.contains("gluniverse-stream-entering") && !card.classList.contains("gluniverse-stream-exiting")) {
+      card.style.maxHeight = `${card.scrollHeight}px`;
+      window.requestAnimationFrame(() => {
+        if (card.isConnected && !card.classList.contains("gluniverse-stream-exiting")) card.style.maxHeight = "none";
+      });
+    }
+  }
+
+  buildClone(source, message) {
+    const clone = source.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.classList.add("gluniverse-stream-chat-message-clone");
+    normalizeImages(clone, message);
+    return clone;
   }
 
   applySettings() {
@@ -85,7 +143,11 @@ export class ChatOverlay {
   removeCard(card, immediate = false) {
     const index = this.cards.findIndex(record => record.element === card);
     if (index >= 0) {
-      window.clearTimeout(this.cards[index].timeout);
+      const record = this.cards[index];
+      window.clearTimeout(record.timeout);
+      if (record.messageId && this.cardsByMessageId.get(record.messageId) === record) {
+        this.cardsByMessageId.delete(record.messageId);
+      }
       this.cards.splice(index, 1);
     }
     if (!card?.isConnected) return;
@@ -96,13 +158,13 @@ export class ChatOverlay {
     card.style.maxHeight = `${card.scrollHeight}px`;
     card.getBoundingClientRect();
     card.classList.add("gluniverse-stream-exiting");
-    window.setTimeout(() => card.remove(), 420);
+    window.setTimeout(() => card.remove(), 460);
   }
 
   clear() {
     for (const record of this.cards) window.clearTimeout(record.timeout);
     this.cards = [];
-    this.seenMessageIds.clear();
+    this.cardsByMessageId.clear();
     document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => card.remove());
   }
 }
@@ -113,7 +175,6 @@ function normalizeImages(element, message) {
     const dataSrc = getImageSource(img);
     if ((!img.getAttribute("src") || img.getAttribute("src") === "") && dataSrc) img.setAttribute("src", dataSrc);
     img.removeAttribute("loading");
-    img.style.display = "block";
   });
   ensureSpeakerImage(element, speakerImage);
 }
@@ -125,7 +186,6 @@ function ensureSpeakerImage(element, imageUrl) {
   const image = header.querySelector("img.avatar, img.message-avatar, img.gluniverse-stream-speaker-avatar, img");
   if (image) {
     if (!image.getAttribute("src")) image.setAttribute("src", imageUrl);
-    image.style.display = "block";
     return;
   }
   const avatar = document.createElement("img");
