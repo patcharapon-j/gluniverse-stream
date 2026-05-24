@@ -1,0 +1,98 @@
+name: Release Module
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "How big is this release?"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bump version
+        id: bump
+        run: |
+          current="$(jq -r '.version' module.json)"
+          echo "Current version: $current"
+
+          IFS='.' read -r major minor patch <<< "$current"
+          major="${major:-0}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+
+          case "${{ github.event.inputs.release_type }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+
+          new="${major}.${minor}.${patch}"
+          echo "New version: $new"
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+          echo "tag=v$new" >> "$GITHUB_OUTPUT"
+
+      - name: Update module.json
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          download="https://github.com/${REPO}/releases/download/${TAG}/gluniverse-stream.zip"
+          manifest="https://github.com/${REPO}/releases/latest/download/module.json"
+          url="https://github.com/${REPO}"
+
+          jq --arg v "$VERSION" \
+             --arg dl "$download" \
+             --arg mf "$manifest" \
+             --arg url "$url" \
+             '.version = $v | .download = $dl | .manifest = $mf | .url = $url' \
+             module.json > module.json.tmp
+          mv module.json.tmp module.json
+          echo "Updated module.json:"
+          cat module.json
+
+      - name: Build release zip
+        run: |
+          zip -r gluniverse-stream.zip \
+            module.json \
+            scripts \
+            styles \
+            templates \
+            lang \
+            README.md
+
+      - name: Commit version bump
+        id: commit
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add module.json
+          git commit -m "Release v${VERSION}"
+          git push origin HEAD:${{ github.ref_name }}
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: Release ${{ steps.bump.outputs.tag }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          files: |
+            module.json
+            gluniverse-stream.zip
