@@ -78,6 +78,7 @@ export const DEFAULT_DIALOG_SETTINGS = {
 
 export const DEFAULT_UI_RULES = {
   elementRules: {},
+  elementZIndex: {},
   selectorRules: []
 };
 

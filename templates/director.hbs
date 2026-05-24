@@ -102,7 +102,7 @@
 <section class="gluniverse-stream-panel">
   <h2>Stream UI Visibility</h2>
   <table>
-    <thead><tr><th>Title</th><th>Selector</th><th>Source</th><th>State</th><th></th></tr></thead>
+    <thead><tr><th>Title</th><th>Selector</th><th>Source</th><th>State</th><th>Layer</th><th></th></tr></thead>
     <tbody>
       {{#each detectedUi}}
       <tr>
@@ -110,6 +110,7 @@
         <td><code>{{selector}}</code></td>
         <td>{{source}}</td>
         <td>{{state}}</td>
+        <td><input type="number" name="uiZIndex" data-rule-id="{{ruleId}}" value="{{zIndex}}" step="1" placeholder="auto" title="z-index applied while allowed in stream mode"></td>
         <td>
           <button type="button" data-action="ui-allow" data-rule-id="{{ruleId}}">Allow</button>
           <button type="button" data-action="ui-block" data-rule-id="{{ruleId}}">Block</button>
@@ -119,14 +120,16 @@
       {{/each}}
     </tbody>
   </table>
+  <p class="gluniverse-stream-form-hint"><small>Layer sets the z-index applied to an allowed element while in stream mode. Leave blank to keep its natural stacking. The stream overlay (chat, dialogs) sits at 100000.</small></p>
   <div class="gluniverse-stream-selector-rule">
     <input type="text" name="selectorRule.selector" placeholder="Expert CSS selector">
     <select name="selectorRule.action"><option value="block">Block</option><option value="allow">Allow</option></select>
+    <input type="number" name="selectorRule.zIndex" step="1" placeholder="Layer (z-index)" title="z-index applied to allowed matches">
     <button type="button" data-action="selector-add">Add Rule</button>
   </div>
   <ul class="gluniverse-stream-selector-rules">
     {{#each selectorRules}}
-    <li><code>{{selector}}</code> {{action}} <button type="button" data-action="selector-remove" data-rule-id="{{id}}">Remove</button></li>
+    <li><code>{{selector}}</code> {{action}}{{#if zIndex}} (z-index {{zIndex}}){{/if}} <button type="button" data-action="selector-remove" data-rule-id="{{id}}">Remove</button></li>
     {{/each}}
   </ul>
 </section>

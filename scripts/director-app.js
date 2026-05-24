@@ -195,6 +195,10 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const name = target.name;
     if (!name) return;
 
+    if (name === "uiZIndex") {
+      this.#captureScroll();
+      return services.uiDetector?.setElementZIndex(target.dataset.ruleId, target.value);
+    }
     if (name === "streamUserId") return this.#setAndRender("streamUserId", target.value);
     if (name === "trustedDirectorUserIds") {
       const ids = Array.from(this.element.querySelectorAll("input[name='trustedDirectorUserIds']:checked")).map(input => input.value);
@@ -254,10 +258,11 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   async #addSelectorRule() {
     const selector = this.element.querySelector("input[name='selectorRule.selector']")?.value?.trim();
     const action = this.element.querySelector("select[name='selectorRule.action']")?.value;
+    const zIndex = this.element.querySelector("input[name='selectorRule.zIndex']")?.value;
     if (!selector) return;
     try {
       this.#captureScroll();
-      await services.uiDetector?.addSelectorRule(selector, action);
+      await services.uiDetector?.addSelectorRule(selector, action, zIndex);
     } catch (error) {
       ui.notifications?.warn(game.i18n.localize("GLUNIVERSE_STREAM.notifications.invalidSelector"));
     }

@@ -7,6 +7,7 @@ export class UiDetector {
     this.entries = new Map();
     this.observer = null;
     this.warnedSelectors = new Set();
+    this.appliedZIndex = new Map();
   }
 
   registerHooks() {
@@ -38,6 +39,7 @@ export class UiDetector {
     document.querySelectorAll(`.${CLASSES.blockedUi}, .${CLASSES.allowedUi}`).forEach(element => {
       element.classList.remove(CLASSES.blockedUi, CLASSES.allowedUi);
     });
+    this.#restoreZIndex();
   }
 
   scan() {
@@ -65,6 +67,7 @@ export class UiDetector {
     return Array.from(this.entries.values()).map(entry => ({
       ...entry,
       state: rules.elementRules[entry.ruleId] ?? "default",
+      zIndex: rules.elementZIndex[entry.ruleId] ?? "",
       lastSeenLabel: new Date(entry.lastSeen).toLocaleTimeString()
     })).sort((a, b) => b.lastSeen - a.lastSeen);
   }
@@ -76,10 +79,21 @@ export class UiDetector {
     await setSetting("uiRules", rules);
   }
 
-  async addSelectorRule(selector, action) {
+  async setElementZIndex(ruleId, zIndex) {
+    const rules = getUiRules();
+    const number = Number(zIndex);
+    if (zIndex === "" || zIndex === null || zIndex === undefined || !Number.isFinite(number)) delete rules.elementZIndex[ruleId];
+    else rules.elementZIndex[ruleId] = number;
+    await setSetting("uiRules", rules);
+  }
+
+  async addSelectorRule(selector, action, zIndex) {
     document.querySelectorAll(selector);
     const rules = getUiRules();
-    rules.selectorRules.push({ id: foundry.utils.randomID(), selector, action });
+    const rule = { id: foundry.utils.randomID(), selector, action };
+    const number = Number(zIndex);
+    if (zIndex !== "" && zIndex !== null && zIndex !== undefined && Number.isFinite(number)) rule.zIndex = number;
+    rules.selectorRules.push(rule);
     await setSetting("uiRules", rules);
   }
 
@@ -92,6 +106,7 @@ export class UiDetector {
   applyRules() {
     if (!this.streamMode.active) return;
     const rules = getUiRules();
+    this.#restoreZIndex();
     document.querySelectorAll(`.${CLASSES.blockedUi}, .${CLASSES.allowedUi}`).forEach(element => {
       element.classList.remove(CLASSES.blockedUi, CLASSES.allowedUi);
     });
@@ -100,7 +115,10 @@ export class UiDetector {
       if (!element) continue;
       const action = rules.elementRules[entry.ruleId];
       if (action === "block") element.classList.add(CLASSES.blockedUi);
-      if (action === "allow") element.classList.add(CLASSES.allowedUi);
+      if (action === "allow") {
+        element.classList.add(CLASSES.allowedUi);
+        this.#applyZIndex(element, rules.elementZIndex[entry.ruleId]);
+      }
     }
 
     for (const rule of rules.selectorRules) {
@@ -111,6 +129,7 @@ export class UiDetector {
           if (rule.action === "allow") {
             element.classList.remove(CLASSES.blockedUi);
             element.classList.add(CLASSES.allowedUi);
+            this.#applyZIndex(element, rule.zIndex);
           }
         });
       } catch (error) {
@@ -120,6 +139,21 @@ export class UiDetector {
         }
       }
     }
+  }
+
+  #applyZIndex(element, zIndex) {
+    const value = Number(zIndex);
+    if (!Number.isFinite(value)) return;
+    if (!this.appliedZIndex.has(element)) this.appliedZIndex.set(element, element.style.zIndex);
+    element.style.zIndex = String(value);
+  }
+
+  #restoreZIndex() {
+    for (const [element, original] of this.appliedZIndex) {
+      if (original) element.style.zIndex = original;
+      else element.style.removeProperty("z-index");
+    }
+    this.appliedZIndex.clear();
   }
 }
 

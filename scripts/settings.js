@@ -64,6 +64,7 @@ export function getUiRules() {
   const rules = getSetting("uiRules") ?? {};
   return {
     elementRules: rules.elementRules ?? {},
+    elementZIndex: rules.elementZIndex ?? {},
     selectorRules: Array.isArray(rules.selectorRules) ? rules.selectorRules : []
   };
 }
@@ -146,10 +147,21 @@ function sanitizeUiRules(value) {
   for (const [id, action] of Object.entries(rules.elementRules ?? {})) {
     if (["allow", "block", "default"].includes(action)) elementRules[id] = action;
   }
+  const elementZIndex = {};
+  for (const [id, zIndex] of Object.entries(rules.elementZIndex ?? {})) {
+    const number = Number(zIndex);
+    if (Number.isFinite(number)) elementZIndex[id] = number;
+  }
   const selectorRules = Array.isArray(rules.selectorRules)
-    ? rules.selectorRules.filter(rule => rule?.selector && ["allow", "block"].includes(rule.action))
+    ? rules.selectorRules
+      .filter(rule => rule?.selector && ["allow", "block"].includes(rule.action))
+      .map(rule => {
+        const zIndex = Number(rule.zIndex);
+        const { zIndex: _ignored, ...rest } = rule;
+        return Number.isFinite(zIndex) ? { ...rest, zIndex } : rest;
+      })
     : [];
-  return { elementRules, selectorRules };
+  return { elementRules, elementZIndex, selectorRules };
 }
 
 function duplicateDefault(value) {
