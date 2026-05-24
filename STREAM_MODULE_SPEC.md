@@ -60,7 +60,7 @@ World settings:
 - `cameraSettings`: global camera settings.
 - `chatSettings`: global chat overlay settings.
 - `dialogSettings`: global dialog overlay settings.
-- `uiRules`: selector and detected-element allow/block rules.
+- `uiRules`: selector and detected-element allow/block rules, plus per-element z-index overrides applied to allowed elements in stream mode.
 
 Scene flags under `gluniverse-stream`:
 
@@ -95,6 +95,7 @@ Default settings:
   },
   "uiRules": {
     "elementRules": {},
+    "elementZIndex": {},
     "selectorRules": []
   }
 }
