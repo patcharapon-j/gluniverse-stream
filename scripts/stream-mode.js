@@ -102,28 +102,17 @@ export class StreamMode {
   }
 
   async #showStartPrompt() {
-    const content = await renderTemplate(`modules/${MODULE_ID}/templates/start-prompt.hbs`, {});
-    if (typeof Dialog === "function") return new Promise(resolve => {
-      new Dialog({
-        title: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.title"),
-        content,
-        buttons: {
-          start: { label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.start"), callback: () => resolve("start") },
-          always: { label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.always"), callback: () => resolve("always") },
-          cancel: { label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.cancel"), callback: () => resolve("cancel") }
-        },
-        close: () => resolve("cancel"),
-        default: "start"
-      }).render(true);
-    });
-
-    const confirmed = await foundry.applications?.api?.DialogV2?.confirm?.({
+    const content = await foundry.applications.handlebars.renderTemplate(`modules/${MODULE_ID}/templates/start-prompt.hbs`, {});
+    const choice = await foundry.applications.api.DialogV2.wait({
       window: { title: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.title") },
       content,
-      yes: { label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.start") },
-      no: { label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.cancel") },
+      buttons: [
+        { action: "start", label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.start"), default: true, callback: () => "start" },
+        { action: "always", label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.always"), callback: () => "always" },
+        { action: "cancel", label: game.i18n.localize("GLUNIVERSE_STREAM.startPrompt.cancel"), callback: () => "cancel" }
+      ],
       rejectClose: false
     });
-    return confirmed ? "start" : "cancel";
+    return choice ?? "cancel";
   }
 }

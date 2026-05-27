@@ -14,7 +14,7 @@ const state = {};
 Hooks.once("init", () => {
   registerSettings();
   registerKeybindings();
-  loadTemplates([
+  foundry.applications.handlebars.loadTemplates([
     `modules/${MODULE_ID}/templates/director.hbs`,
     `modules/${MODULE_ID}/templates/start-prompt.hbs`
   ]);

@@ -16,7 +16,7 @@ export class UiDetector {
       if (key === "uiRules") this.applyRules();
     });
     Hooks.on("renderApplicationV2", (app, html) => this.trackApplication(app, html));
-    Hooks.on("renderApplicationV1", (app, html) => this.trackApplication(app, html));
+    Hooks.on("renderApplication", (app, html) => this.trackApplication(app, html));
   }
 
   start() {

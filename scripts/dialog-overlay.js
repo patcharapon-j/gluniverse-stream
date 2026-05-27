@@ -11,11 +11,12 @@ export class DialogOverlay {
 
   registerHooks() {
     Hooks.on("renderApplicationV2", (app, html) => this.trackApplication(app, html));
-    Hooks.on("renderApplicationV1", (app, html) => this.trackApplication(app, html));
+    Hooks.on("renderApplication", (app, html) => this.trackApplication(app, html));
+    Hooks.on("renderDialogV2", (app, html) => this.trackApplication(app, html, true));
     Hooks.on("renderDialog", (app, html) => this.trackApplication(app, html, true));
-    Hooks.on("closeApplication", app => this.clearApplication(app));
     Hooks.on("closeApplicationV2", app => this.clearApplication(app));
-    Hooks.on("closeApplicationV1", app => this.clearApplication(app));
+    Hooks.on("closeApplication", app => this.clearApplication(app));
+    Hooks.on("closeDialogV2", app => this.clearApplication(app));
     Hooks.on("closeDialog", app => this.clearApplication(app));
     Hooks.on(`${MODULE_ID}.streamModeChanged`, active => {
       if (!active) this.#reset();
