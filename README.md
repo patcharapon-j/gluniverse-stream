@@ -1,6 +1,6 @@
 # GLUniverse Stream
 
-GLUniverse Stream is a Foundry VTT v13 module for running a clean OBS/browser-capture stream client. It hides core Foundry UI on a dedicated stream user, adds Director controls for GMs/trusted users, frames the canvas camera, and renders stream-safe chat and presentation overlays.
+GLUniverse Stream is a Foundry VTT v13/v14 module for running a clean OBS/browser-capture stream client. It hides core Foundry UI on a dedicated stream user, adds Director controls for GMs/trusted users, frames the canvas camera, and renders stream-safe chat and presentation overlays.
 
 ## Features
 
@@ -49,4 +49,4 @@ The release `module.json` includes `manifest` and `download` URLs pointing at th
 
 ## Compatibility
 
-- Foundry VTT: v13 minimum, v13 verified.
+- Foundry VTT: v13 minimum, v14 verified.
