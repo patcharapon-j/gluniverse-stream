@@ -82,6 +82,7 @@ export class ChatOverlay {
     card.className = "gluniverse-stream-chat-card gluniverse-stream-entering";
     if (messageId) card.dataset.streamMessageId = messageId;
     card.append(this.buildClone(latest, message));
+    applyThemeContext(card, latest);
     root.append(card);
     card.style.maxHeight = "0px";
 
@@ -114,6 +115,7 @@ export class ChatOverlay {
     const oldClone = card.querySelector(".gluniverse-stream-chat-message-clone");
     if (oldClone) oldClone.replaceWith(newClone);
     else card.append(newClone);
+    applyThemeContext(card, latest);
     if (!card.classList.contains("gluniverse-stream-entering") && !card.classList.contains("gluniverse-stream-exiting")) {
       card.style.maxHeight = `${card.scrollHeight}px`;
       window.requestAnimationFrame(() => {
@@ -166,6 +168,35 @@ export class ChatOverlay {
     this.cards = [];
     this.cardsByMessageId.clear();
     document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => card.remove());
+  }
+}
+
+// Theme context (Foundry core themes + module themes such as PF2e Dorako UI) is
+// provided to chat messages by ancestor elements, not the message itself: core
+// defines its CSS variables on a `.themed.theme-dark`/`.theme-light` ancestor and
+// modules scope their chat styling under a `[data-theme]` ancestor. Because the
+// stream card lives outside `#chat-log`, the cloned message loses that context and
+// renders unstyled. Re-apply the relevant markers from the live message's ancestry
+// onto the card so the clone resolves the same variables and matches scoped rules.
+const THEME_CLASS_PATTERN = /^(themed|theme-[\w-]+|dorako-ui|color-?scheme-[\w-]+)$/i;
+const THEME_CONTEXT_ATTRIBUTES = ["data-theme", "data-color-scheme"];
+
+function applyThemeContext(card, source) {
+  for (const cls of [...card.classList]) {
+    if (THEME_CLASS_PATTERN.test(cls)) card.classList.remove(cls);
+  }
+  for (const attr of THEME_CONTEXT_ATTRIBUTES) card.removeAttribute(attr);
+  if (!(source instanceof HTMLElement)) return;
+
+  const themed = source.closest(".themed");
+  if (themed) {
+    for (const cls of themed.classList) {
+      if (THEME_CLASS_PATTERN.test(cls)) card.classList.add(cls);
+    }
+  }
+  for (const attr of THEME_CONTEXT_ATTRIBUTES) {
+    const owner = source.closest(`[${attr}]`);
+    if (owner) card.setAttribute(attr, owner.getAttribute(attr));
   }
 }
 
