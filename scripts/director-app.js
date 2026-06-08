@@ -134,7 +134,8 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         [CAMERA_MODES.scene]: "Scene/full background",
         [CAMERA_MODES.trackedToken]: "Tracked token(s)",
         [CAMERA_MODES.party]: "Party only (visible PCs)",
-        [CAMERA_MODES.combatants]: "Visible combatants"
+        [CAMERA_MODES.combatants]: "Visible combatants",
+        [CAMERA_MODES.activeTurn]: "Active turn only"
       }, camera.combatMode),
       sceneViewOptions: optionsFor({
         [SCENE_VIEW_MODES.fitBackground]: "Fit background",
@@ -315,7 +316,8 @@ function cameraModeLabel(mode) {
     [CAMERA_MODES.scene]: "Scene/full background",
     [CAMERA_MODES.trackedToken]: "Tracked token(s)",
     [CAMERA_MODES.party]: "Party only",
-    [CAMERA_MODES.combatants]: "Visible combatants"
+    [CAMERA_MODES.combatants]: "Visible combatants",
+    [CAMERA_MODES.activeTurn]: "Active turn only"
   };
   return labels[mode] ?? mode;
 }
