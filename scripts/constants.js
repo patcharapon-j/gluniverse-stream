@@ -26,7 +26,8 @@ export const CAMERA_MODES = {
   scene: "scene",
   trackedToken: "trackedToken",
   party: "party",
-  combatants: "combatants"
+  combatants: "combatants",
+  activeTurn: "activeTurn"
 };
 
 export const SCENE_VIEW_MODES = {

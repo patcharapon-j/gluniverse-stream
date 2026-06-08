@@ -151,6 +151,7 @@ Modes:
 - `players`: frame visible, non-hidden tokens whose actors have player owners.
 - `manualTokens`: frame visible, non-hidden tokens whose token ids are in the current scene flag.
 - `combat`: frame visible, non-hidden combatant tokens on the current scene, excluding defeated combatants by default.
+- `activeTurn`: frame only the visible, non-hidden token of the combatant whose turn it currently is, plus any visible manually tracked tokens. The frame advances to the next combatant on each turn change.
 
 Visibility rule:
 
@@ -171,7 +172,7 @@ Reframing triggers:
 - Token create/delete/update affecting position, size, or hidden state.
 - Manual tracked token changes.
 - Combat start, turn/round changes, combat update, and combatant defeated changes.
-- Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target.
+- Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target. An explicit Director reframe always re-applies the camera: it cancels any in-flight pan animation and bypasses the same-target dedup so the request is never silently dropped.
 
 ## Token Tracking
 

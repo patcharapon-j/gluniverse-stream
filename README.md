@@ -37,6 +37,7 @@ https://github.com/patcharapon-j/gluniverse-stream/releases/latest/download/modu
 - **Tracked token(s)**: Follows visible manually tracked tokens.
 - **Party only**: Follows visible player-owned tokens plus any visible manually tracked tokens.
 - **Visible combatants**: Follows visible combatants plus any visible manually tracked tokens.
+- **Active turn only**: Follows only the combatant whose turn it currently is, plus any visible manually tracked tokens. The camera moves to the next combatant on each turn change.
 
 ## Packaging A Release
 

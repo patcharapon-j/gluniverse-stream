@@ -72,12 +72,13 @@ export class CameraController {
     if (!canvas?.ready || (!this.streamMode.active && !force)) return false;
     const settings = getCameraSettings();
     const mode = this.getEffectiveMode(settings);
-    if (mode === CAMERA_MODES.manual) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode }) : false;
-    if (mode === CAMERA_MODES.scene) return this.frameScene({ animate, viewMode: settings.sceneViewMode });
+    const reapply = force || explicit;
+    if (mode === CAMERA_MODES.manual) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
+    if (mode === CAMERA_MODES.scene) return this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply });
 
     const tokens = this.getTokensForMode(mode, settings);
-    if (!tokens.length) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode }) : false;
-    return this.frameTokenBounds(tokens, { animate });
+    if (!tokens.length) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
+    return this.frameTokenBounds(tokens, { animate, force: reapply });
   }
 
   getEffectiveMode(settings = getCameraSettings()) {
@@ -105,6 +106,17 @@ export class CameraController {
         }, []);
         return unionTokens(combatantTokens, this.getVisibleTrackedTokens());
       }
+      case CAMERA_MODES.activeTurn: {
+        const combat = getCurrentSceneCombat();
+        if (!combat) return [];
+        const activeTokens = [];
+        const combatant = getActiveCombatant(combat);
+        if (combatant && !(settings.excludeDefeated !== false && combatant.defeated)) {
+          const token = getCombatantToken(combatant);
+          if (isVisibleToken(token)) activeTokens.push(token);
+        }
+        return unionTokens(activeTokens, this.getVisibleTrackedTokens());
+      }
       default:
         return [];
     }
@@ -114,19 +126,19 @@ export class CameraController {
     return this.tokenTracking.getTrackedTokens().filter(isVisibleToken);
   }
 
-  async frameScene({ animate = true, viewMode = SCENE_VIEW_MODES.fitBackground } = {}) {
+  async frameScene({ animate = true, viewMode = SCENE_VIEW_MODES.fitBackground, force = false } = {}) {
     const bounds = getSceneBounds();
     if (!bounds) return;
-    await this.applyBounds(bounds, { animate, fill: viewMode === SCENE_VIEW_MODES.fillBackground, clampZoom: false, usePadding: false });
+    await this.applyBounds(bounds, { animate, fill: viewMode === SCENE_VIEW_MODES.fillBackground, clampZoom: false, usePadding: false, force });
   }
 
-  async frameTokenBounds(tokens, { animate = true } = {}) {
+  async frameTokenBounds(tokens, { animate = true, force = false } = {}) {
     const bounds = unionBounds(tokens.map(token => tokenBounds(token, this.tokenDestinations.get(token.document?.id))).filter(Boolean));
     if (!bounds) return;
-    await this.applyBounds(bounds, { animate, fill: false, clampZoom: true });
+    await this.applyBounds(bounds, { animate, fill: false, clampZoom: true, force });
   }
 
-  async applyBounds(bounds, { animate = true, fill = false, clampZoom = true, usePadding = true } = {}) {
+  async applyBounds(bounds, { animate = true, fill = false, clampZoom = true, usePadding = true, force = false } = {}) {
     const settings = getCameraSettings();
     const viewport = getViewportSize();
     const padding = usePadding ? getCameraPadding(settings, viewport) : { top: 0, right: 0, bottom: 0, left: 0 };
@@ -150,7 +162,8 @@ export class CameraController {
     };
 
     try {
-      if (position.duration > 0 && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
+      if (force) this.cancelPanAnimation();
+      if (position.duration > 0 && !force && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
       if (position.duration > 0) return await this.animatePan(position);
       this.cancelPanAnimation();
       return setCanvasView(position);
@@ -242,6 +255,14 @@ function getCombatants(combat) {
   if (Array.isArray(combatants)) return combatants;
   if (typeof combatants.contents !== "undefined") return combatants.contents;
   return Array.from(combatants);
+}
+
+function getActiveCombatant(combat) {
+  if (combat?.combatant) return combat.combatant;
+  const turns = combat?.turns;
+  const turn = combat?.turn;
+  if (Array.isArray(turns) && Number.isInteger(turn)) return turns[turn] ?? null;
+  return null;
 }
 
 function getCombatantToken(combatant) {
