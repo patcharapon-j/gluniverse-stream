@@ -23,6 +23,7 @@ export class ChatOverlay {
 
   handleRenderedMessage(message, html) {
     if (!this.streamMode.active) return;
+    if (!isAudienceVisible(message)) return;
     const source = getElement(html);
     if (!source) return;
     const messageId = message?.id ?? message?.uuid ?? source.dataset.messageId ?? source.dataset.messageUuid;
@@ -79,7 +80,7 @@ export class ChatOverlay {
     this.applySettings();
 
     const card = document.createElement("div");
-    card.className = "gluniverse-stream-chat-card gluniverse-stream-entering";
+    card.className = `gluniverse-stream-chat-card gluniverse-stream-entering ${CHAT_CONTEXT_CLASS}`;
     if (messageId) card.dataset.streamMessageId = messageId;
     card.append(this.buildClone(latest, message));
     applyThemeContext(card, latest);
@@ -129,6 +130,8 @@ export class ChatOverlay {
     clone.removeAttribute("id");
     clone.classList.add("gluniverse-stream-chat-message-clone");
     normalizeImages(clone, message);
+    syncTimestamp(clone, message);
+    stripOwnerControls(clone);
     return clone;
   }
 
@@ -180,6 +183,57 @@ export class ChatOverlay {
 // onto the card so the clone resolves the same variables and matches scoped rules.
 const THEME_CLASS_PATTERN = /^(themed|theme-[\w-]+|dorako-ui|color-?scheme-[\w-]+)$/i;
 const THEME_CONTEXT_ATTRIBUTES = ["data-theme", "data-color-scheme"];
+
+// Foundry core and game systems (notably dnd5e) scope their chat card styling to a
+// container ancestor rather than the message element itself — e.g. dnd5e matches
+// `:is(.chat-popout, #chat-log, .chat-log) .message`. The cloned message lives
+// outside `#chat-log`, so without that ancestor the card renders unstyled. Marking
+// the wrapper as `.chat-popout` (the same context core uses for a popped-out
+// message) restores those rules. Crucially we do NOT add the `[data-gm-user]`
+// marker that the live sidebar carries for a GM, so dnd5e keeps concealed/secret
+// card details hidden — matching exactly what a normal player sees on stream.
+const CHAT_CONTEXT_CLASS = "chat-popout";
+
+// A message that a regular player would never see (GM-only whispers, blind rolls)
+// must not leak onto the stream just because the streamer is logged in as a GM.
+function isAudienceVisible(message) {
+  if (!message) return false;
+  if (message.blind) return false;
+  const whisper = Array.isArray(message.whisper) ? message.whisper : [];
+  if (whisper.length === 0) return true;
+  return whisper.some(id => {
+    const user = game.users?.get?.(id);
+    return user ? !user.isGM : false;
+  });
+}
+
+// Interactive roll-editing affordances — e.g. RSReforged's hover overlays for retro
+// advantage/disadvantage/crit and GM dice fudging — are owner/GM-only controls that a
+// passive spectator never sees. They carry no roll result, can't be used on a
+// pointer-inert stream card, and would otherwise leak onto the stream whenever the
+// streamer owns the roll or is logged in as a GM. Drop them so the card matches a
+// normal player's view of someone else's roll.
+const OWNER_CONTROL_SELECTORS = [".rsr-overlay"];
+
+function stripOwnerControls(clone) {
+  for (const selector of OWNER_CONTROL_SELECTORS) {
+    clone.querySelectorAll(selector).forEach(element => element.remove());
+  }
+}
+
+// The clone captures the relative timestamp text frozen at render time, and Foundry
+// only refreshes timestamps inside `#chat-log`. Re-derive the text from the message's
+// own timestamp so the stream card shows the same time as the live chat message.
+function syncTimestamp(clone, message) {
+  const timestamp = Number(message?.timestamp);
+  if (!Number.isFinite(timestamp)) return;
+  const timeSince = foundry?.utils?.timeSince;
+  if (typeof timeSince !== "function") return;
+  const element = clone.querySelector("time.message-timestamp, .message-timestamp, time");
+  if (!element) return;
+  element.textContent = timeSince(timestamp);
+  element.setAttribute("datetime", new Date(timestamp).toISOString());
+}
 
 function applyThemeContext(card, source) {
   for (const cls of [...card.classList]) {
