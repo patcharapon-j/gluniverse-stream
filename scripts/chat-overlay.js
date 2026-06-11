@@ -131,6 +131,7 @@ export class ChatOverlay {
     clone.classList.add("gluniverse-stream-chat-message-clone");
     normalizeImages(clone, message);
     syncTimestamp(clone, message);
+    stripOwnerControls(clone);
     return clone;
   }
 
@@ -204,6 +205,20 @@ function isAudienceVisible(message) {
     const user = game.users?.get?.(id);
     return user ? !user.isGM : false;
   });
+}
+
+// Interactive roll-editing affordances — e.g. RSReforged's hover overlays for retro
+// advantage/disadvantage/crit and GM dice fudging — are owner/GM-only controls that a
+// passive spectator never sees. They carry no roll result, can't be used on a
+// pointer-inert stream card, and would otherwise leak onto the stream whenever the
+// streamer owns the roll or is logged in as a GM. Drop them so the card matches a
+// normal player's view of someone else's roll.
+const OWNER_CONTROL_SELECTORS = [".rsr-overlay"];
+
+function stripOwnerControls(clone) {
+  for (const selector of OWNER_CONTROL_SELECTORS) {
+    clone.querySelectorAll(selector).forEach(element => element.remove());
+  }
 }
 
 // The clone captures the relative timestamp text frozen at render time, and Foundry
