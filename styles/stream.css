@@ -168,6 +168,26 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 /*
+  The card carries `.chat-popout` purely so core/system chat styles that are
+  scoped to a chat container ancestor (e.g. dnd5e's
+  `:is(.chat-popout, #chat-log, .chat-log) .message`) resolve on the clone. It is
+  never an actual popout window, so neutralize any window-frame layout that a bare
+  `.chat-popout` selector might otherwise apply, while keeping our own card sizing.
+*/
+.gluniverse-stream-chat-card.chat-popout {
+  display: block;
+  position: relative;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  background: none;
+  box-shadow: none;
+  border: none;
+}
+
+/*
   Default header layout for unthemed chat. Themed modules (Dorako UI etc.)
   apply their own grid/flex via .with-image/.no-image markers — defer to those
   by scoping our flex fallback to headers without those classes, and by
