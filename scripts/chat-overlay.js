@@ -57,14 +57,24 @@ export class ChatOverlay {
     const id = message?.id;
     if (!id) return;
     const record = this.cardsByMessageId.get(id);
+    // Mark the record so an in-flight createCardAfterDice (still awaiting the dice
+    // animation) aborts instead of building a card for a message that no longer
+    // exists — e.g. RSReforged merges a damage roll into the parent attack card and
+    // then deletes the transient child message.
+    if (record) record.cancelled = true;
     if (record?.element?.isConnected) this.removeCard(record.element);
-    else this.cardsByMessageId.delete(id);
+    else if (record) this.cardsByMessageId.delete(id);
   }
 
   async createCardAfterDice(message, source, messageId, placeholder) {
     await waitForDiceAnimation(message);
     await nextFrame();
-    if (!this.streamMode.active) {
+    // A bundling system (e.g. RSReforged) can merge this roll into another card and
+    // delete the message while we were waiting on the dice. Bail out if it was
+    // cancelled by a delete, or no longer exists in the world, so we don't emit a
+    // duplicate/orphan card for content that already lives in the bundled card.
+    const stillExists = !messageId || Boolean(game.messages?.get?.(messageId));
+    if (!this.streamMode.active || placeholder?.cancelled || !stillExists) {
       if (messageId && this.cardsByMessageId.get(messageId) === placeholder) this.cardsByMessageId.delete(messageId);
       return;
     }
@@ -96,12 +106,10 @@ export class ChatOverlay {
     if (messageId) this.cardsByMessageId.set(messageId, record);
 
     window.requestAnimationFrame(() => {
-      card.style.maxHeight = `${card.scrollHeight}px`;
       card.classList.remove("gluniverse-stream-entering");
+      card.style.maxHeight = `${card.scrollHeight}px`;
+      this.trackCardHeight(record);
     });
-    card.addEventListener("transitionend", event => {
-      if (event.propertyName === "max-height" && !card.classList.contains("gluniverse-stream-exiting")) card.style.maxHeight = "none";
-    }, { once: true });
     while (this.cards.length > Math.max(1, Number(settings.maxVisible) || 5)) {
       this.removeCard(this.cards[0].element, true);
     }
@@ -118,11 +126,41 @@ export class ChatOverlay {
     else card.append(newClone);
     applyThemeContext(card, latest);
     if (!card.classList.contains("gluniverse-stream-entering") && !card.classList.contains("gluniverse-stream-exiting")) {
+      this.trackCardHeight(record);
       card.style.maxHeight = `${card.scrollHeight}px`;
-      window.requestAnimationFrame(() => {
-        if (card.isConnected && !card.classList.contains("gluniverse-stream-exiting")) card.style.maxHeight = "none";
-      });
     }
+  }
+
+  // Keep the card's height in sync with its content for the card's whole life.
+  // Systems/modules (dnd5e, RSReforged) rewrite the chat card DOM asynchronously
+  // after the initial render — via re-render hooks and a MutationObserver — and
+  // dice icons/avatars load late, so the content grows after we first measure it.
+  // A one-shot max-height snapshot would freeze the card at its early (tiny) size
+  // and clip the bundled multiroll content. A ResizeObserver on the cloned content
+  // re-measures and re-targets max-height whenever it changes, so the card always
+  // grows to fit. (Exit collapses via the .gluniverse-stream-exiting !important rule.)
+  trackCardHeight(record) {
+    const card = record?.element;
+    if (!card?.isConnected) return;
+    const content = card.querySelector(".gluniverse-stream-chat-message-clone") ?? card;
+    const sync = () => {
+      if (!card.isConnected) return;
+      if (card.classList.contains("gluniverse-stream-entering")) return;
+      if (card.classList.contains("gluniverse-stream-exiting")) return;
+      card.style.maxHeight = `${card.scrollHeight}px`;
+    };
+    if (typeof ResizeObserver === "function") {
+      record.resizeObserver?.disconnect();
+      const observer = new ResizeObserver(() => window.requestAnimationFrame(sync));
+      observer.observe(content);
+      record.resizeObserver = observer;
+      return;
+    }
+    // Without ResizeObserver, release the cap once the enter settles so late content
+    // is never clipped.
+    window.setTimeout(() => {
+      if (card.isConnected && !card.classList.contains("gluniverse-stream-exiting")) card.style.maxHeight = "none";
+    }, 700);
   }
 
   buildClone(source, message) {
@@ -150,6 +188,7 @@ export class ChatOverlay {
     if (index >= 0) {
       const record = this.cards[index];
       window.clearTimeout(record.timeout);
+      record.resizeObserver?.disconnect();
       if (record.messageId && this.cardsByMessageId.get(record.messageId) === record) {
         this.cardsByMessageId.delete(record.messageId);
       }
@@ -167,7 +206,10 @@ export class ChatOverlay {
   }
 
   clear() {
-    for (const record of this.cards) window.clearTimeout(record.timeout);
+    for (const record of this.cards) {
+      window.clearTimeout(record.timeout);
+      record.resizeObserver?.disconnect();
+    }
     this.cards = [];
     this.cardsByMessageId.clear();
     document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => card.remove());
