@@ -26,6 +26,12 @@ export class ChatOverlay {
     if (!isAudienceVisible(message)) return;
     const source = getElement(html);
     if (!source) return;
+    // Modules such as RSReforged run transient/preview renders through
+    // renderChatMessageHTML while processing a roll: unsaved ChatMessage husks with
+    // no world id, timestamp 0 and empty content. A player's chat log never shows
+    // these as cards, so neither should the stream — only mirror messages that
+    // actually exist in the world.
+    if (!isPersistedMessage(message, source)) return;
     const messageId = message?.id ?? message?.uuid ?? source.dataset.messageId ?? source.dataset.messageUuid;
 
     if (messageId) {
@@ -104,6 +110,7 @@ export class ChatOverlay {
     };
     this.cards.push(record);
     if (messageId) this.cardsByMessageId.set(messageId, record);
+    this.mirrorLiveSource(record, latest, message);
 
     window.requestAnimationFrame(() => {
       card.classList.remove("gluniverse-stream-entering");
@@ -120,6 +127,7 @@ export class ChatOverlay {
     if (!card?.isConnected) return;
     const latest = getLatestRenderedMessage(source, message, record.messageId) ?? source;
     if (!latest) return;
+    if (latest !== record.mirrorSource) this.mirrorLiveSource(record, latest, message);
     const newClone = this.buildClone(latest, message);
     const oldClone = card.querySelector(".gluniverse-stream-chat-message-clone");
     if (oldClone) oldClone.replaceWith(newClone);
@@ -163,6 +171,32 @@ export class ChatOverlay {
     }, 700);
   }
 
+  // Mirror the live chat card for the stream card's whole life. RSReforged (and
+  // dnd5e itself) rewrite the rendered message DOM *after* the render hook — async
+  // template injection, a MutationObserver-driven bonus manager, post-dice reveals —
+  // without updating the ChatMessage document, so no update hook fires. A one-shot
+  // clone can therefore capture an empty pre-processed husk and never recover.
+  // Watching the live element and re-cloning on change keeps the stream card
+  // pixel-identical to what a player sees in their chat log.
+  mirrorLiveSource(record, source, message) {
+    record.mirrorObserver?.disconnect();
+    record.mirrorSource = source instanceof HTMLElement ? source : null;
+    if (!record.mirrorSource || typeof MutationObserver !== "function") return;
+    let scheduled = false;
+    const observer = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      window.requestAnimationFrame(() => {
+        scheduled = false;
+        const card = record.element;
+        if (!card?.isConnected || card.classList.contains("gluniverse-stream-exiting")) return;
+        this.refreshCardContents(record, message, record.mirrorSource);
+      });
+    });
+    observer.observe(record.mirrorSource, { childList: true, subtree: true, attributes: true, characterData: true });
+    record.mirrorObserver = observer;
+  }
+
   buildClone(source, message) {
     const clone = source.cloneNode(true);
     clone.removeAttribute("id");
@@ -189,6 +223,7 @@ export class ChatOverlay {
       const record = this.cards[index];
       window.clearTimeout(record.timeout);
       record.resizeObserver?.disconnect();
+      record.mirrorObserver?.disconnect();
       if (record.messageId && this.cardsByMessageId.get(record.messageId) === record) {
         this.cardsByMessageId.delete(record.messageId);
       }
@@ -209,6 +244,7 @@ export class ChatOverlay {
     for (const record of this.cards) {
       window.clearTimeout(record.timeout);
       record.resizeObserver?.disconnect();
+      record.mirrorObserver?.disconnect();
     }
     this.cards = [];
     this.cardsByMessageId.clear();
@@ -235,6 +271,15 @@ const THEME_CONTEXT_ATTRIBUTES = ["data-theme", "data-color-scheme"];
 // marker that the live sidebar carries for a GM, so dnd5e keeps concealed/secret
 // card details hidden — matching exactly what a normal player sees on stream.
 const CHAT_CONTEXT_CLASS = "chat-popout";
+
+// Transient renders (RSReforged previews/processing husks, locally constructed
+// ChatMessage objects) go through renderChatMessageHTML but are never part of the
+// world's chat history — they have no id in game.messages, timestamp 0 and empty
+// content. Only persisted messages become stream cards.
+function isPersistedMessage(message, source) {
+  const id = message?.id ?? source?.dataset?.messageId;
+  return Boolean(id && game.messages?.get?.(id));
+}
 
 // A message that a regular player would never see (GM-only whispers, blind rolls)
 // must not leak onto the stream just because the streamer is logged in as a GM.
@@ -268,7 +313,9 @@ function stripOwnerControls(clone) {
 // own timestamp so the stream card shows the same time as the live chat message.
 function syncTimestamp(clone, message) {
   const timestamp = Number(message?.timestamp);
-  if (!Number.isFinite(timestamp)) return;
+  // Guard against unset/zero timestamps (transient renders) which would otherwise
+  // display as a relative time measured from the 1970 epoch.
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return;
   const timeSince = foundry?.utils?.timeSince;
   if (typeof timeSince !== "function") return;
   const element = clone.querySelector("time.message-timestamp, .message-timestamp, time");
