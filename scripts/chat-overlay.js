@@ -57,14 +57,24 @@ export class ChatOverlay {
     const id = message?.id;
     if (!id) return;
     const record = this.cardsByMessageId.get(id);
+    // Mark the record so an in-flight createCardAfterDice (still awaiting the dice
+    // animation) aborts instead of building a card for a message that no longer
+    // exists — e.g. RSReforged merges a damage roll into the parent attack card and
+    // then deletes the transient child message.
+    if (record) record.cancelled = true;
     if (record?.element?.isConnected) this.removeCard(record.element);
-    else this.cardsByMessageId.delete(id);
+    else if (record) this.cardsByMessageId.delete(id);
   }
 
   async createCardAfterDice(message, source, messageId, placeholder) {
     await waitForDiceAnimation(message);
     await nextFrame();
-    if (!this.streamMode.active) {
+    // A bundling system (e.g. RSReforged) can merge this roll into another card and
+    // delete the message while we were waiting on the dice. Bail out if it was
+    // cancelled by a delete, or no longer exists in the world, so we don't emit a
+    // duplicate/orphan card for content that already lives in the bundled card.
+    const stillExists = !messageId || Boolean(game.messages?.get?.(messageId));
+    if (!this.streamMode.active || placeholder?.cancelled || !stillExists) {
       if (messageId && this.cardsByMessageId.get(messageId) === placeholder) this.cardsByMessageId.delete(messageId);
       return;
     }
