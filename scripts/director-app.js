@@ -1,3 +1,4 @@
+import { getActiveSceneCombat, getCombatants } from "./combat-utils.js";
 import {
   CAMERA_MODES,
   CHAT_POSITIONS,
@@ -104,7 +105,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         autoStartCanEnable: Boolean(streamUserId && !autoStartIds.includes(streamUserId)),
         scene: canvas?.scene?.name ?? game.i18n.localize("GLUNIVERSE_STREAM.common.none"),
         mode: cameraModeLabel(activeMode),
-        combat: getCurrentSceneCombat() ? "Yes" : "No"
+        combat: getActiveSceneCombat() ? "Yes" : "No"
       },
       users: game.users?.map(user => ({
         id: user.id,
@@ -281,7 +282,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 
 function getCombatRows() {
-  return getCombatants(game.combat).map(combatant => ({
+  return getCombatants(getActiveSceneCombat()).map(combatant => ({
     id: combatant.id,
     tokenId: combatant.tokenId,
     name: combatant.name,
@@ -290,24 +291,8 @@ function getCombatRows() {
   }));
 }
 
-function getCurrentSceneCombat() {
-  const combat = game.combat;
-  if (!combat) return null;
-  const sceneId = combat.scene?.id ?? combat.sceneId;
-  if (!sceneId) return combat;
-  return sceneId === canvas?.scene?.id ? combat : null;
-}
-
-function getCombatants(combat) {
-  const combatants = combat?.combatants;
-  if (!combatants) return [];
-  if (Array.isArray(combatants)) return combatants;
-  if (typeof combatants.contents !== "undefined") return combatants.contents;
-  return Array.from(combatants);
-}
-
 function getActiveCameraMode(camera) {
-  return getCurrentSceneCombat() ? camera.combatMode : camera.outOfCombatMode;
+  return getActiveSceneCombat() ? camera.combatMode : camera.outOfCombatMode;
 }
 
 function cameraModeLabel(mode) {

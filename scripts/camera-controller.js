@@ -1,3 +1,4 @@
+import { getActiveSceneCombat, getCombatants } from "./combat-utils.js";
 import { CAMERA_MODES, MODULE_ID, SCENE_VIEW_MODES, STREAM_COMMANDS } from "./constants.js";
 import { getCameraSettings } from "./settings.js";
 import { sendStreamCommand } from "./socket.js";
@@ -37,8 +38,12 @@ export class CameraController {
     Hooks.on("combatRound", () => this.scheduleReframe());
     Hooks.on("combatTurn", () => this.scheduleReframe());
     Hooks.on("combatTurnChange", () => this.scheduleReframe());
+    Hooks.on("createCombat", () => this.scheduleReframe());
     Hooks.on("updateCombat", () => this.scheduleReframe());
+    Hooks.on("deleteCombat", () => this.scheduleReframe());
     Hooks.on("updateCombatant", () => this.scheduleReframe());
+    Hooks.on("createCombatant", () => this.scheduleReframe());
+    Hooks.on("deleteCombatant", () => this.scheduleReframe());
     Hooks.on(`${MODULE_ID}.trackedTokensChanged`, () => this.scheduleReframe());
     Hooks.on(`${MODULE_ID}.settingsChanged`, key => {
       if (key === "cameraSettings") this.scheduleReframe({ force: true });
@@ -82,7 +87,7 @@ export class CameraController {
   }
 
   getEffectiveMode(settings = getCameraSettings()) {
-    return getCurrentSceneCombat() ? settings.combatMode : settings.outOfCombatMode;
+    return getActiveSceneCombat() ? settings.combatMode : settings.outOfCombatMode;
   }
 
   getTokensForMode(mode, settings = getCameraSettings()) {
@@ -92,7 +97,7 @@ export class CameraController {
       case CAMERA_MODES.trackedToken:
         return this.getVisibleTrackedTokens();
       case CAMERA_MODES.combatants: {
-        const combat = getCurrentSceneCombat();
+        const combat = getActiveSceneCombat();
         if (!combat) return [];
         const seen = new Set();
         const combatantTokens = getCombatants(combat).reduce((tokens, combatant) => {
@@ -107,7 +112,7 @@ export class CameraController {
         return unionTokens(combatantTokens, this.getVisibleTrackedTokens());
       }
       case CAMERA_MODES.activeTurn: {
-        const combat = getCurrentSceneCombat();
+        const combat = getActiveSceneCombat();
         if (!combat) return [];
         const activeTokens = [];
         const combatant = getActiveCombatant(combat);
@@ -239,22 +244,6 @@ function getCameraPadding(settings, viewport) {
 
 function sidePadding(percent, viewportSize, gridSpaces, gridSize) {
   return (Math.max(0, Number(percent) || 0) / 100 * viewportSize) + (Math.max(0, Number(gridSpaces) || 0) * gridSize);
-}
-
-function getCurrentSceneCombat() {
-  const combat = game.combat;
-  if (!combat) return null;
-  const sceneId = combat.scene?.id ?? combat.sceneId;
-  if (!sceneId) return combat;
-  return sceneId === canvas?.scene?.id ? combat : null;
-}
-
-function getCombatants(combat) {
-  const combatants = combat?.combatants;
-  if (!combatants) return [];
-  if (Array.isArray(combatants)) return combatants;
-  if (typeof combatants.contents !== "undefined") return combatants.contents;
-  return Array.from(combatants);
 }
 
 function getActiveCombatant(combat) {

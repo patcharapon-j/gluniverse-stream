@@ -171,7 +171,7 @@ Reframing triggers:
 - Relevant camera setting changes.
 - Token create/delete/update affecting position, size, or hidden state.
 - Manual tracked token changes.
-- Combat start, turn/round changes, combat update, and combatant defeated changes.
+- Combat creation, start, end, turn/round changes, combat update, and combatant add/remove/defeated changes. In-combat detection scans the combats collection for an active encounter on the current scene rather than relying on `game.combat`/`combats.viewed`, which is unreliable for the stream client because its combat tracker UI is hidden and some systems (e.g. D&D5e, PF2e) bind combats to a scene.
 - Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target. An explicit Director reframe always re-applies the camera: it cancels any in-flight pan animation and bypasses the same-target dedup so the request is never silently dropped.
 
 ## Token Tracking

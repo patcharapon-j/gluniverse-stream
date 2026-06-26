@@ -1,3 +1,4 @@
+import { getActiveSceneCombat, getCombatants } from "./combat-utils.js";
 import { FLAGS, MODULE_ID } from "./constants.js";
 import { setSceneFlag } from "./socket.js";
 
@@ -40,7 +41,7 @@ export class TokenTracking {
 
   getTokenRows() {
     const tracked = new Set(this.getTrackedIds());
-    const combatants = getCombatants(game.combat);
+    const combatants = getCombatants(getActiveSceneCombat());
     const defeatedIds = new Set(combatants.filter(c => c.defeated).map(c => c.tokenId));
     return (canvas?.tokens?.placeables ?? []).map(token => ({
       id: token.document.id,
@@ -76,14 +77,6 @@ export class TokenTracking {
     const column = element.querySelector(".col.right") ?? element.querySelector(".right") ?? element;
     column.append(button);
   }
-}
-
-function getCombatants(combat) {
-  const combatants = combat?.combatants;
-  if (!combatants) return [];
-  if (Array.isArray(combatants)) return combatants;
-  if (typeof combatants.contents !== "undefined") return combatants.contents;
-  return Array.from(combatants);
 }
 
 function getElement(html) {
