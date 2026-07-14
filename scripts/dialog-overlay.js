@@ -12,8 +12,8 @@ export class DialogOverlay {
   registerHooks() {
     Hooks.on("renderApplicationV2", (app, html) => this.trackApplication(app, html));
     Hooks.on("renderApplication", (app, html) => this.trackApplication(app, html));
-    Hooks.on("renderDialogV2", (app, html) => this.trackApplication(app, html, true));
-    Hooks.on("renderDialog", (app, html) => this.trackApplication(app, html, true));
+    Hooks.on("renderDialogV2", (app, html) => this.trackApplication(app, html));
+    Hooks.on("renderDialog", (app, html) => this.trackApplication(app, html));
     Hooks.on("closeApplicationV2", app => this.clearApplication(app));
     Hooks.on("closeApplication", app => this.clearApplication(app));
     Hooks.on("closeDialogV2", app => this.clearApplication(app));
@@ -23,11 +23,18 @@ export class DialogOverlay {
     });
   }
 
-  trackApplication(app, html, force = false) {
+  trackApplication(app, html) {
     if (!this.streamMode.active) return;
     const element = getElement(html) ?? getElement(app?.element);
     if (!element || element.closest(`#${MODULE_ID}-director`) || element.closest("#gluniverse-stream-overlay")) return;
-    if (!force && !isStreamPresentation(app, element)) return;
+    // Never capture interactive input dialogs (system roll/check/damage dialogs,
+    // confirmations, prompts). Re-parenting them into the overlay and scheduling an
+    // auto-close resolves the dialog as cancelled — e.g. PF2e's CheckModifiersDialog
+    // calls `resolve(false)` on close — which silently aborts the roll. In stream
+    // mode that manifests as no Dice So Nice animation and no chat card. These are
+    // GM tools, not audience content, so leave them exactly where Foundry put them.
+    if (isInteractiveDialog(app, element)) return;
+    if (!isStreamPresentation(app, element)) return;
     const key = app ?? element;
     if (this.entries.has(key)) return;
 
@@ -111,6 +118,37 @@ export class DialogOverlay {
     }
     this.entries.clear();
     this.#detachBackdrop();
+  }
+}
+
+// Interactive dialogs are GM-facing input tools whose close handler resolves a
+// pending action (system roll/check/damage/save/spellcast dialogs, target pickers,
+// deletion confirmations, generic prompts). The overlay must never re-parent or
+// auto-close these — doing so cancels the pending action. Shared audience content
+// (image popouts, journal pages) is not an interactive dialog and is unaffected.
+const INTERACTIVE_DIALOG_SELECTORS = [
+  ".roll-modifiers-dialog",
+  ".dice-checks",
+  "[class*='check-modifiers']",
+  "[class*='roll-dialog']",
+  "[class*='damage-dialog']"
+];
+
+function isInteractiveDialog(app, element) {
+  // Image popouts and journal pages are audience content, never interactive dialogs.
+  if (classifyPresentation(app, element) !== "dialog") return false;
+  const className = app?.constructor?.name ?? "";
+  if (/(Roll|Check|Damage|Modifier|Save|Spellcast|Attack|Strike|Cast|Prompt|Confirm)/i.test(className)) return true;
+  if (INTERACTIVE_DIALOG_SELECTORS.some(selector => safeMatches(element, selector) || element.querySelector?.(selector))) return true;
+  if (element.matches?.(".dialog, .dialog-v2, [role='dialog']") || element.classList.contains("dialog")) return true;
+  return false;
+}
+
+function safeMatches(element, selector) {
+  try {
+    return Boolean(element?.matches?.(selector));
+  } catch (_error) {
+    return false;
   }
 }
 
