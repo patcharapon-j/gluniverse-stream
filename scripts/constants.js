@@ -27,7 +27,8 @@ export const CAMERA_MODES = {
   trackedToken: "trackedToken",
   party: "party",
   combatants: "combatants",
-  activeTurn: "activeTurn"
+  activeTurn: "activeTurn",
+  spotlight: "spotlight"
 };
 
 export const SCENE_VIEW_MODES = {
@@ -62,7 +63,12 @@ export const DEFAULT_CAMERA_SETTINGS = {
   minZoom: 0.5,
   maxZoom: 1.5,
   animationDurationMs: 750,
-  excludeDefeated: true
+  excludeDefeated: true,
+  spotlightZoom: 1,
+  spotlightPlayersOnly: false,
+  spotlightPullback: true,
+  spotlightPullbackFactor: 2,
+  spotlightPullbackDurationMs: 300
 };
 
 export const DEFAULT_CHAT_SETTINGS = {
