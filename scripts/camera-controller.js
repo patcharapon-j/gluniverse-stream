@@ -13,10 +13,14 @@ export class CameraController {
     this.panPromise = null;
     this.panResolve = null;
     this.panTarget = null;
+    this.spotlightTarget = null;
   }
 
   registerHooks() {
-    Hooks.on("canvasReady", () => this.scheduleReframe({ animate: false, force: true }));
+    Hooks.on("canvasReady", () => {
+      this.spotlightTarget = null;
+      this.scheduleReframe({ animate: false, force: true });
+    });
     Hooks.on("preUpdateToken", (doc, changes) => {
       if (!hasTokenFrameChange(changes)) return;
       this.cacheTokenDestination(doc, changes);
@@ -81,6 +85,17 @@ export class CameraController {
     if (mode === CAMERA_MODES.manual) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
     if (mode === CAMERA_MODES.scene) return this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply });
 
+    if (mode === CAMERA_MODES.spotlight) {
+      const spotlightToken = this.getSpotlightToken(settings);
+      if (spotlightToken) return this.frameSpotlight(spotlightToken, { animate, force: reapply });
+      this.spotlightTarget = null;
+      const fallback = this.getTokensForMode(CAMERA_MODES.combatants, settings);
+      if (fallback.length) return this.frameTokenBounds(fallback, { animate, force: reapply });
+      if (!getActiveSceneCombat()) return this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply });
+      return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
+    }
+    this.spotlightTarget = null;
+
     const tokens = this.getTokensForMode(mode, settings);
     if (!tokens.length) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
     return this.frameTokenBounds(tokens, { animate, force: reapply });
@@ -122,9 +137,30 @@ export class CameraController {
         }
         return unionTokens(activeTokens, this.getVisibleTrackedTokens());
       }
+      case CAMERA_MODES.spotlight: {
+        const token = this.getSpotlightToken(settings);
+        return token ? [token] : [];
+      }
       default:
         return [];
     }
+  }
+
+  /**
+   * The spotlight target is only ever the token of the combatant whose turn it is, and only while a
+   * combat is running on the canvas scene. Tracked tokens are deliberately not unioned in: spotlight
+   * is a single-token framing, so adding other tokens would pull the camera off the active token.
+   */
+  getSpotlightToken(settings = getCameraSettings()) {
+    const combat = getActiveSceneCombat();
+    if (!combat) return null;
+    const combatant = getActiveCombatant(combat);
+    if (!combatant) return null;
+    if (settings.excludeDefeated !== false && combatant.defeated) return null;
+    const token = getCombatantToken(combatant);
+    if (!isVisibleToken(token)) return null;
+    if (settings.spotlightPlayersOnly && !isPartyToken(token)) return null;
+    return token;
   }
 
   getVisibleTrackedTokens() {
@@ -160,12 +196,76 @@ export class CameraController {
     }
 
     const position = {
-      x: bounds.x + (bounds.width / 2) - ((padding.left - padding.right) / 2 / scale),
-      y: bounds.y + (bounds.height / 2) - ((padding.top - padding.bottom) / 2 / scale),
-      scale,
+      ...centeredPosition(bounds, scale, padding),
+      duration: animate ? Math.max(0, Number(settings.animationDurationMs) || 0) : 0
+    };
+    return this.applyPosition(position, { force });
+  }
+
+  /**
+   * Spotlight framing ignores fit/fill bounds math entirely: the active token is centered and the
+   * canvas is set to the configured spotlight zoom, so the operator gets the same framing distance
+   * on every turn regardless of token size or how many combatants are on the scene.
+   */
+  async frameSpotlight(token, { animate = true, force = false } = {}) {
+    const settings = getCameraSettings();
+    const tokenId = token?.document?.id ?? null;
+    const bounds = tokenBounds(token, this.tokenDestinations.get(tokenId));
+    if (!bounds) return false;
+    const viewport = getViewportSize();
+    const padding = getCameraPadding(settings, viewport);
+    const scale = spotlightZoom(settings);
+    const position = {
+      ...centeredPosition(bounds, scale, padding),
       duration: animate ? Math.max(0, Number(settings.animationDurationMs) || 0) : 0
     };
 
+    const previous = this.spotlightTarget;
+    this.spotlightTarget = { tokenId, x: position.x, y: position.y, scale };
+    if (position.duration > 0 && !force && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
+    if (position.duration > 0 && shouldPullBack(settings, previous, position, tokenId)) {
+      return this.runSpotlightPullback(position, settings, { force });
+    }
+    return this.applyPosition(position, { force });
+  }
+
+  /**
+   * Zoom out from wherever the camera currently sits, travel to the new token at that wider zoom,
+   * then zoom back in. Panning at a wider zoom keeps long token moves and turn changes readable
+   * on stream instead of smearing the map across the frame.
+   */
+  async runSpotlightPullback(position, settings, { force = false } = {}) {
+    const start = getCanvasView();
+    const factor = pullbackFactor(settings);
+    const pullDuration = Math.max(0, Number(settings.spotlightPullbackDurationMs) || 0);
+    const pullScale = Math.max(0.01, Math.min(start.scale, position.scale) / factor);
+    const final = { x: position.x, y: position.y, scale: position.scale };
+    const phases = [];
+
+    if (pullDuration > 0 && pullScale < start.scale - 0.001) phases.push({ x: start.x, y: start.y, scale: pullScale, duration: pullDuration });
+    phases.push({ x: position.x, y: position.y, scale: pullScale, duration: position.duration });
+    if (pullDuration > 0 && pullScale < position.scale - 0.001) phases.push({ ...final, duration: pullDuration });
+    else phases.push({ ...final, duration: 0 });
+
+    try {
+      if (force) this.cancelPanAnimation();
+      for (const phase of phases) {
+        if (phase.duration <= 0) {
+          this.cancelPanAnimation();
+          setCanvasView(phase);
+          continue;
+        }
+        const completed = await this.animatePan(phase, final);
+        if (!completed) return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Spotlight pull-back failed`, error);
+      return false;
+    }
+  }
+
+  async applyPosition(position, { force = false } = {}) {
     try {
       if (force) this.cancelPanAnimation();
       if (position.duration > 0 && !force && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
@@ -177,12 +277,14 @@ export class CameraController {
     }
   }
 
-  animatePan(position) {
+  animatePan(position, finalTarget = null) {
     this.cancelPanAnimation();
     const start = getCanvasView();
     const startedAt = performance.now();
     const duration = Math.max(0, Number(position.duration) || 0);
-    this.panTarget = { x: position.x, y: position.y, scale: position.scale };
+    this.panTarget = finalTarget
+      ? { x: finalTarget.x, y: finalTarget.y, scale: finalTarget.scale }
+      : { x: position.x, y: position.y, scale: position.scale };
 
     this.panPromise = new Promise(resolve => {
       this.panResolve = resolve;
@@ -230,6 +332,34 @@ export class CameraController {
       height: "height" in changes ? changes.height : doc.height
     });
   }
+}
+
+function centeredPosition(bounds, scale, padding) {
+  return {
+    x: bounds.x + (bounds.width / 2) - ((padding.left - padding.right) / 2 / scale),
+    y: bounds.y + (bounds.height / 2) - ((padding.top - padding.bottom) / 2 / scale),
+    scale
+  };
+}
+
+function spotlightZoom(settings) {
+  const zoom = Number(settings.spotlightZoom);
+  return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+}
+
+function pullbackFactor(settings) {
+  const factor = Number(settings.spotlightPullbackFactor);
+  return Number.isFinite(factor) && factor > 1 ? factor : 1;
+}
+
+function shouldPullBack(settings, previous, position, tokenId) {
+  if (settings.spotlightPullback === false) return false;
+  if (pullbackFactor(settings) <= 1) return false;
+  if (!(Number(settings.spotlightPullbackDurationMs) > 0)) return false;
+  if (!previous) return false;
+  if (previous.tokenId !== tokenId) return true;
+  const threshold = (canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100) / 4;
+  return Math.hypot(position.x - previous.x, position.y - previous.y) > threshold;
 }
 
 function getCameraPadding(settings, viewport) {

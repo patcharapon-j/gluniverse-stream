@@ -81,7 +81,12 @@ Default settings:
     "minZoom": 0.5,
     "maxZoom": 1.5,
     "animationDurationMs": 750,
-    "excludeDefeated": true
+    "excludeDefeated": true,
+    "spotlightZoom": 1,
+    "spotlightPlayersOnly": false,
+    "spotlightPullback": true,
+    "spotlightPullbackFactor": 2,
+    "spotlightPullbackDurationMs": 300
   },
   "chatSettings": {
     "position": "top-left",
@@ -132,7 +137,7 @@ Required sections:
 - Status: stream user, connected state, last reported active state, current scene, camera mode.
 - Session controls: request start, stop stream mode on the stream client, toggle normal Foundry UI visibility on the stream client, enable/revoke stream-user auto-start, reframe now.
 - Users: select stream user and trusted Directors.
-- Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, animation duration, exclude defeated.
+- Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, animation duration, exclude defeated, spotlight zoom and spotlight transition settings.
 - Tracking: current canvas tokens with manual track toggle.
 - Chat overlay: position, x/y pixel offset, lifetime, max visible.
 - Dialog overlay: lifetime.
@@ -152,6 +157,14 @@ Modes:
 - `manualTokens`: frame visible, non-hidden tokens whose token ids are in the current scene flag.
 - `combat`: frame visible, non-hidden combatant tokens on the current scene, excluding defeated combatants by default.
 - `activeTurn`: frame only the visible, non-hidden token of the combatant whose turn it currently is, plus any visible manually tracked tokens. The frame advances to the next combatant on each turn change.
+- `spotlight`: in-combat only. Center the visible, non-hidden token of the combatant whose turn it currently is and set the canvas to `spotlightZoom` exactly. This mode overrides fit/fill bounds framing and the `minZoom`/`maxZoom` caps, so the framing distance is identical on every turn. Manually tracked tokens are not unioned in, because spotlight is single-token framing. `spotlightPlayersOnly` restricts the spotlight to player-owned tokens. When there is no eligible spotlight token the camera falls back to `combatants` framing, then to the scene.
+
+Spotlight transition (`spotlightPullback`):
+
+- On a spotlight retarget caused by a turn change or by the active token moving more than a quarter grid space, animate in three steps: zoom out in place to the smaller of the current and target zoom divided by `spotlightPullbackFactor`, pan to the new token at that wider zoom, then zoom back in to `spotlightZoom`.
+- The zoom-out and zoom-in steps each run for `spotlightPullbackDurationMs`; the travel between them uses `animationDurationMs`.
+- The transition is skipped when it is disabled, when the factor is not greater than 1, when `spotlightPullbackDurationMs` is 0, or when there is no previous spotlight target (first frame after entering the mode or the scene).
+- A newer camera request cancels an in-flight transition; the cancelled sequence aborts instead of finishing its remaining steps.
 
 Visibility rule:
 

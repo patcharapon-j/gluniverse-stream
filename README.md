@@ -8,6 +8,7 @@ GLUniverse Stream is a Foundry VTT v13/v14 module for running a clean OBS/browse
 - Optional "Always Enter Stream Mode" startup choice, configurable by a Stream Director.
 - Director panel for stream start/stop, UI restore, camera settings, tracked tokens, chat settings, and overlay visibility rules.
 - Camera modes for manual/free camera, full scene background, tracked tokens, visible party tokens, and visible combatants.
+- In-combat spotlight mode that locks a fixed zoom onto the active token, with an optional zoom-out/pan/zoom-in transition on moves and turn changes.
 - Stream-client-side camera visibility checks so fog/hidden-token visibility stays under Foundry's normal client rules.
 - Chat overlay that clones Foundry-rendered chat cards, waits for Dice So Nice/final roll rendering, and avoids duplicate roll cards.
 - Dialog, journal, handout, and image presentation overlay with automatic close timing.
