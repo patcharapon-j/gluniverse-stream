@@ -82,6 +82,7 @@ Default settings:
     "maxZoom": 1.5,
     "animationDurationMs": 750,
     "excludeDefeated": true,
+    "includeTargets": true,
     "spotlightZoom": 1,
     "spotlightPlayersOnly": false,
     "spotlightPullback": true,
@@ -137,7 +138,7 @@ Required sections:
 - Status: stream user, connected state, last reported active state, current scene, camera mode.
 - Session controls: request start, stop stream mode on the stream client, toggle normal Foundry UI visibility on the stream client, enable/revoke stream-user auto-start, reframe now.
 - Users: select stream user and trusted Directors.
-- Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, animation duration, exclude defeated, spotlight zoom and spotlight transition settings.
+- Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, follow duration, exclude defeated, travel zoom-out settings, keep-targets-in-frame, spotlight zoom and spotlight player filter.
 - Tracking: current canvas tokens with manual track toggle.
 - Chat overlay: position, x/y pixel offset, lifetime, max visible.
 - Dialog overlay: lifetime.
@@ -156,15 +157,28 @@ Modes:
 - `players`: frame visible, non-hidden tokens whose actors have player owners.
 - `manualTokens`: frame visible, non-hidden tokens whose token ids are in the current scene flag.
 - `combat`: frame visible, non-hidden combatant tokens on the current scene, excluding defeated combatants by default.
-- `activeTurn`: frame only the visible, non-hidden token of the combatant whose turn it currently is, plus any visible manually tracked tokens. The frame advances to the next combatant on each turn change.
+- `activeTurn`: frame only the visible, non-hidden token of the combatant whose turn it currently is, plus that token's current targets and any visible manually tracked tokens. The frame advances to the next combatant on each turn change.
 - `spotlight`: in-combat only. Center the visible, non-hidden token of the combatant whose turn it currently is and set the canvas to `spotlightZoom` exactly. This mode overrides fit/fill bounds framing and the `minZoom`/`maxZoom` caps, so the framing distance is identical on every turn. Manually tracked tokens are not unioned in, because spotlight is single-token framing. `spotlightPlayersOnly` restricts the spotlight to player-owned tokens. When there is no eligible spotlight token the camera falls back to `combatants` framing, then to the scene.
 
-Spotlight transition (`spotlightPullback`):
+Target framing (`includeTargets`):
 
-- On a spotlight retarget caused by a turn change or by the active token moving more than a quarter grid space, animate in three steps: zoom out in place to the smaller of the current and target zoom divided by `spotlightPullbackFactor`, pan to the new token at that wider zoom, then zoom back in to `spotlightZoom`.
-- The zoom-out and zoom-in steps each run for `spotlightPullbackDurationMs`; the travel between them uses `animationDurationMs`.
-- The transition is skipped when it is disabled, when the factor is not greater than 1, when `spotlightPullbackDurationMs` is 0, or when there is no previous spotlight target (first frame after entering the mode or the scene).
-- A newer camera request cancels an in-flight transition; the cancelled sequence aborts instead of finishing its remaining steps.
+- A token's targets are the tokens currently targeted by the users that control it: the player owners of its actor, or the active GMs when no player owns it. Targeting is per-user state in Foundry, so this is read from the users, never written.
+- Only visible, non-hidden target tokens are framed, under the same visibility rule as every other camera target.
+- Every token-following mode (`party`, `trackedToken`, `combatants`, `activeTurn`) unions the targets of the tokens it frames into its bounds.
+- `spotlight` widens from `spotlightZoom` only as far as needed to hold the active token and its targets, and never past `minZoom`. With no targets the framing is unchanged: the active token centered at exactly `spotlightZoom`.
+- A `targetToken` hook triggers a reframe.
+
+Camera motion:
+
+- The camera runs one continuous, critically damped motion loop rather than per-request tweens. Position and log-zoom each keep their velocity between frames, so retargeting mid-flight (a turn change during a pan, a token moving again while the camera is still travelling) bends the current move instead of restarting it.
+- `animationDurationMs` is the smoothing time: roughly how long the camera takes to reach a new framing. `0` applies the framing instantly.
+- Travel zoom-out (`spotlightPullback`, `spotlightPullbackFactor`, `spotlightPullbackDurationMs`) applies to every token-following mode, not just spotlight. The pull-back is proportional to how far the camera still has to travel, measured against the visible span of the canvas, so short moves barely pull back and cross-map moves pull back to `targetZoom / spotlightPullbackFactor` and ease back in on arrival. `spotlightPullbackDurationMs` is how quickly that zoom-out eases in and out. The transition is skipped when it is disabled or when the factor is not greater than 1.
+- Camera destinations are clamped to what the canvas can actually display before the motion starts, using the same constraints Foundry applies. A framing that would scroll past the edge of the canvas is never skipped or refused: the camera settles as close to it as the canvas allows.
+
+Token movement safety:
+
+- The camera never runs from `preUpdateToken` or any other pre-update hook, and it never moves the canvas synchronously from inside a hook. Reframes are queued and applied on a later animation frame, so module camera work can never interleave with, delay, or cancel a token movement.
+- While a canvas interaction is in progress on the stream client (token drag, ruler, placement preview), the camera holds its position and retries on the next frame instead of moving the canvas out from under the interaction.
 
 Visibility rule:
 
@@ -184,6 +198,7 @@ Reframing triggers:
 - Relevant camera setting changes.
 - Token create/delete/update affecting position, size, or hidden state.
 - Manual tracked token changes.
+- Target changes (`targetToken`).
 - Combat creation, start, end, turn/round changes, combat update, and combatant add/remove/defeated changes. In-combat detection scans the combats collection for an active encounter on the current scene rather than relying on `game.combat`/`combats.viewed`, which is unreliable for the stream client because its combat tracker UI is hidden and some systems (e.g. D&D5e, PF2e) bind combats to a scene.
 - Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target. An explicit Director reframe always re-applies the camera: it cancels any in-flight pan animation and bypasses the same-target dedup so the request is never silently dropped.
 

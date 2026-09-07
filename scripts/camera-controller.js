@@ -3,29 +3,52 @@ import { CAMERA_MODES, MODULE_ID, SCENE_VIEW_MODES, STREAM_COMMANDS } from "./co
 import { getCameraSettings } from "./settings.js";
 import { sendStreamCommand } from "./socket.js";
 
+const MIN_SMOOTH_TIME = 0.04;
+const MAX_FRAME_SECONDS = 1 / 20;
+/**
+ * A critically damped move is ~96% complete after 5 time constants, so a configured duration maps
+ * to a smoothing time of about four tenths of it. That keeps the configured "follow ms" meaning
+ * roughly "time to arrive" while the motion itself stays continuous and retargetable.
+ */
+const SMOOTH_TIME_RATIO = 0.4;
+const SETTLE_DISTANCE = 1;
+const SETTLE_SCALE = 0.002;
+const SETTLE_SPEED = 4;
+const SETTLE_TRAVEL = 0.02;
+/** Ignore pull-back for moves shorter than this fraction of the visible span, so short steps do not breathe the zoom. */
+const TRAVEL_DEADZONE = 0.12;
+const REFRAME_DEBOUNCE_MS = 100;
+const INTERACTION_HOLD_MS = 8000;
+const MAX_INTERACTION_RETRIES = 120;
+
 export class CameraController {
   constructor(streamMode, tokenTracking) {
     this.streamMode = streamMode;
     this.tokenTracking = tokenTracking;
-    this.pending = null;
     this.tokenDestinations = new Map();
-    this.panFrame = null;
-    this.panPromise = null;
-    this.panResolve = null;
-    this.panTarget = null;
-    this.spotlightTarget = null;
+    this.queued = null;
+    this.queuedFrame = null;
+    this.queuedTimeout = null;
+    this.target = null;
+    this.motion = null;
+    this.motionPromise = null;
+    this.motionResolve = null;
+    this.busyRetries = 0;
   }
 
   registerHooks() {
     Hooks.on("canvasReady", () => {
-      this.spotlightTarget = null;
+      this.stopMotion();
+      this.tokenDestinations.clear();
       this.scheduleReframe({ animate: false, force: true });
     });
-    Hooks.on("preUpdateToken", (doc, changes) => {
-      if (!hasTokenFrameChange(changes)) return;
-      this.cacheTokenDestination(doc, changes);
-      this.scheduleReframe({ immediate: true });
-    });
+    /**
+     * Camera work never runs from `preUpdateToken`. That hook is part of the document update
+     * workflow that Foundry's movement pipeline drives, and mutating the canvas transform from
+     * inside it fights the live drag/ruler interaction that issued the move, which can cancel the
+     * movement outright. Reframing therefore only reacts to committed updates, always off the hook's
+     * own call stack, so the module can never stop a token from moving.
+     */
     Hooks.on("updateToken", (doc, changes) => {
       if (!hasTokenFrameChange(changes)) return;
       this.cacheTokenDestination(doc, changes);
@@ -37,7 +60,11 @@ export class CameraController {
       this.scheduleReframe({ immediate: hasTokenPositionChange(changes) });
     });
     Hooks.on("createToken", () => this.scheduleReframe());
-    Hooks.on("deleteToken", () => this.scheduleReframe());
+    Hooks.on("deleteToken", doc => {
+      if (doc?.id) this.tokenDestinations.delete(doc.id);
+      this.scheduleReframe();
+    });
+    Hooks.on("targetToken", () => this.scheduleReframe({ immediate: true }));
     Hooks.on("combatStart", () => this.scheduleReframe());
     Hooks.on("combatRound", () => this.scheduleReframe());
     Hooks.on("combatTurn", () => this.scheduleReframe());
@@ -57,6 +84,7 @@ export class CameraController {
     });
     Hooks.on(`${MODULE_ID}.streamModeChanged`, active => {
       if (active) this.scheduleReframe({ animate: false, force: true });
+      else this.stopMotion();
     });
   }
 
@@ -64,21 +92,52 @@ export class CameraController {
     sendStreamCommand(STREAM_COMMANDS.reframe, { force: true, explicit: true, ...payload });
   }
 
+  /**
+   * Reframes are always queued and run on a later animation frame. Nothing here touches the canvas
+   * synchronously from a Foundry hook, so a reframe can never interleave with a document update or
+   * a canvas interaction that is still in progress.
+   */
   scheduleReframe(options = {}) {
     if (!this.streamMode.active) return;
-    if (options.force || options.immediate) {
-      window.clearTimeout(this.pending);
-      this.pending = null;
-      return this.reframe(options);
+    return this.#enqueueReframe(options);
+  }
+
+  #enqueueReframe(options) {
+    this.queued = mergeReframeOptions(this.queued, options);
+    if (this.queuedFrame || this.queuedTimeout) {
+      if (!this.queued.immediate && !this.queued.force) return;
+      window.clearTimeout(this.queuedTimeout);
+      this.queuedTimeout = null;
+      if (this.queuedFrame) return;
     }
-    if (this.pending) return;
-    const delay = options.immediate ? 0 : 100;
-    this.pending = window.setTimeout(() => this.reframe(options), delay);
+    if (this.queued.immediate || this.queued.force) return this.#queueFrame();
+    this.queuedTimeout = window.setTimeout(() => {
+      this.queuedTimeout = null;
+      this.#queueFrame();
+    }, REFRAME_DEBOUNCE_MS);
+  }
+
+  #queueFrame() {
+    if (this.queuedFrame) return;
+    this.queuedFrame = requestAnimationFrame(() => {
+      this.queuedFrame = null;
+      const options = this.queued ?? {};
+      this.queued = null;
+      this.reframe(options);
+    });
   }
 
   async reframe({ animate = true, force = false, explicit = false } = {}) {
-    this.pending = null;
     if (!canvas?.ready || (!this.streamMode.active && !force)) return false;
+    if (isCanvasInteractionBusy() && this.busyRetries < MAX_INTERACTION_RETRIES) {
+      // A drag, ruler, or token placement is live on this client. Retry on the next frame instead of
+      // moving the canvas out from under it, but give up waiting rather than stall the camera if an
+      // interaction state never clears.
+      this.busyRetries += 1;
+      this.#enqueueReframe({ animate, force, explicit, immediate: true });
+      return false;
+    }
+    this.busyRetries = 0;
     const settings = getCameraSettings();
     const mode = this.getEffectiveMode(settings);
     const reapply = force || explicit;
@@ -88,13 +147,11 @@ export class CameraController {
     if (mode === CAMERA_MODES.spotlight) {
       const spotlightToken = this.getSpotlightToken(settings);
       if (spotlightToken) return this.frameSpotlight(spotlightToken, { animate, force: reapply });
-      this.spotlightTarget = null;
       const fallback = this.getTokensForMode(CAMERA_MODES.combatants, settings);
       if (fallback.length) return this.frameTokenBounds(fallback, { animate, force: reapply });
       if (!getActiveSceneCombat()) return this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply });
       return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
     }
-    this.spotlightTarget = null;
 
     const tokens = this.getTokensForMode(mode, settings);
     if (!tokens.length) return explicit ? this.frameScene({ animate, viewMode: settings.sceneViewMode, force: reapply }) : false;
@@ -105,7 +162,17 @@ export class CameraController {
     return getActiveSceneCombat() ? settings.combatMode : settings.outOfCombatMode;
   }
 
+  /**
+   * Tokens to frame for a mode, plus whatever those tokens are currently targeting, so an attack
+   * across the map keeps both ends of the action in the shot.
+   */
   getTokensForMode(mode, settings = getCameraSettings()) {
+    const tokens = this.getModeTokens(mode, settings);
+    if (!tokens.length) return tokens;
+    return unionTokens(tokens, this.getTargetTokens(tokens, settings));
+  }
+
+  getModeTokens(mode, settings) {
     switch (mode) {
       case CAMERA_MODES.party:
         return unionTokens(visibleTokens().filter(isPartyToken), this.getVisibleTrackedTokens());
@@ -150,6 +217,7 @@ export class CameraController {
    * The spotlight target is only ever the token of the combatant whose turn it is, and only while a
    * combat is running on the canvas scene. Tracked tokens are deliberately not unioned in: spotlight
    * is a single-token framing, so adding other tokens would pull the camera off the active token.
+   * Tokens the active token is targeting are the one exception, handled in `frameSpotlight`.
    */
   getSpotlightToken(settings = getCameraSettings()) {
     const combat = getActiveSceneCombat();
@@ -167,19 +235,52 @@ export class CameraController {
     return this.tokenTracking.getTrackedTokens().filter(isVisibleToken);
   }
 
+  /**
+   * Tokens the given tokens are currently targeting, so an attack keeps both ends of the action in
+   * frame. Foundry stores targets per user, so a token's targets are the targets of the users who
+   * control it: its actor's player owners, or the active GMs for tokens no player owns.
+   */
+  getTargetTokens(sources, settings = getCameraSettings()) {
+    if (settings.includeTargets === false) return [];
+    const sourceIds = new Set(sources.map(token => token?.document?.id).filter(Boolean));
+    const targets = [];
+    const seen = new Set();
+    for (const source of sources) {
+      for (const target of targetsOfToken(source)) {
+        const id = target?.document?.id;
+        if (!id || seen.has(id) || sourceIds.has(id)) continue;
+        if (!isVisibleToken(target)) continue;
+        seen.add(id);
+        targets.push(target);
+      }
+    }
+    return targets;
+  }
+
   async frameScene({ animate = true, viewMode = SCENE_VIEW_MODES.fitBackground, force = false } = {}) {
     const bounds = getSceneBounds();
-    if (!bounds) return;
-    await this.applyBounds(bounds, { animate, fill: viewMode === SCENE_VIEW_MODES.fillBackground, clampZoom: false, usePadding: false, force });
+    if (!bounds) return false;
+    return this.applyBounds(bounds, {
+      animate,
+      fill: viewMode === SCENE_VIEW_MODES.fillBackground,
+      clampZoom: false,
+      usePadding: false,
+      dynamicZoom: false,
+      force
+    });
   }
 
   async frameTokenBounds(tokens, { animate = true, force = false } = {}) {
-    const bounds = unionBounds(tokens.map(token => tokenBounds(token, this.tokenDestinations.get(token.document?.id))).filter(Boolean));
-    if (!bounds) return;
-    await this.applyBounds(bounds, { animate, fill: false, clampZoom: true, force });
+    const bounds = unionBounds(tokens.map(token => this.boundsFor(token)).filter(Boolean));
+    if (!bounds) return false;
+    return this.applyBounds(bounds, { animate, fill: false, clampZoom: true, dynamicZoom: true, force });
   }
 
-  async applyBounds(bounds, { animate = true, fill = false, clampZoom = true, usePadding = true, force = false } = {}) {
+  boundsFor(token) {
+    return tokenBounds(token, this.tokenDestinations.get(token?.document?.id));
+  }
+
+  async applyBounds(bounds, { animate = true, fill = false, clampZoom = true, usePadding = true, dynamicZoom = true, force = false } = {}) {
     const settings = getCameraSettings();
     const viewport = getViewportSize();
     const padding = usePadding ? getCameraPadding(settings, viewport) : { top: 0, right: 0, bottom: 0, left: 0 };
@@ -197,129 +298,160 @@ export class CameraController {
 
     const position = {
       ...centeredPosition(bounds, scale, padding),
-      duration: animate ? Math.max(0, Number(settings.animationDurationMs) || 0) : 0
+      duration: animate ? animationDuration(settings) : 0
     };
-    return this.applyPosition(position, { force });
+    return this.applyPosition(position, { force, dynamicZoom, settings });
   }
 
   /**
-   * Spotlight framing ignores fit/fill bounds math entirely: the active token is centered and the
-   * canvas is set to the configured spotlight zoom, so the operator gets the same framing distance
-   * on every turn regardless of token size or how many combatants are on the scene.
+   * Spotlight framing normally ignores fit/fill bounds math entirely: the active token is centered
+   * and the canvas is set to the configured spotlight zoom, so the operator gets the same framing
+   * distance on every turn. When the active token is targeting something, the framing widens just
+   * far enough to hold the token and its targets, never zooming in past the spotlight zoom and
+   * never past `minZoom` on the way out.
    */
   async frameSpotlight(token, { animate = true, force = false } = {}) {
     const settings = getCameraSettings();
-    const tokenId = token?.document?.id ?? null;
-    const bounds = tokenBounds(token, this.tokenDestinations.get(tokenId));
+    const focus = [token, ...this.getTargetTokens([token], settings)];
+    const boundsList = focus.map(entry => this.boundsFor(entry)).filter(Boolean);
+    const bounds = unionBounds(boundsList);
     if (!bounds) return false;
+
     const viewport = getViewportSize();
     const padding = getCameraPadding(settings, viewport);
-    const scale = spotlightZoom(settings);
+    let scale = spotlightZoom(settings);
+    if (boundsList.length > 1) {
+      const usableWidth = Math.max(100, viewport.width - padding.left - padding.right);
+      const usableHeight = Math.max(100, viewport.height - padding.top - padding.bottom);
+      const fit = Math.min(usableWidth / Math.max(1, bounds.width), usableHeight / Math.max(1, bounds.height));
+      scale = Math.max(Math.min(scale, fit), Number(settings.minZoom) || 0.01);
+    }
+
     const position = {
       ...centeredPosition(bounds, scale, padding),
-      duration: animate ? Math.max(0, Number(settings.animationDurationMs) || 0) : 0
+      duration: animate ? animationDuration(settings) : 0
     };
-
-    const previous = this.spotlightTarget;
-    this.spotlightTarget = { tokenId, x: position.x, y: position.y, scale };
-    if (position.duration > 0 && !force && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
-    if (position.duration > 0 && shouldPullBack(settings, previous, position, tokenId)) {
-      return this.runSpotlightPullback(position, settings, { force });
-    }
-    return this.applyPosition(position, { force });
+    return this.applyPosition(position, { force, dynamicZoom: true, settings });
   }
 
   /**
-   * Zoom out from wherever the camera currently sits, travel to the new token at that wider zoom,
-   * then zoom back in. Panning at a wider zoom keeps long token moves and turn changes readable
-   * on stream instead of smearing the map across the frame.
+   * Hands a new destination to the motion loop. Retargeting mid-flight is normal and cheap: the
+   * loop keeps its current velocity, so a turn change during a pan bends the existing move instead
+   * of restarting it. The destination is clamped to what the canvas can actually show first, so an
+   * unreachable framing simply lands as close as the canvas allows.
    */
-  async runSpotlightPullback(position, settings, { force = false } = {}) {
-    const start = getCanvasView();
-    const factor = pullbackFactor(settings);
-    const pullDuration = Math.max(0, Number(settings.spotlightPullbackDurationMs) || 0);
-    const pullScale = Math.max(0.01, Math.min(start.scale, position.scale) / factor);
-    const final = { x: position.x, y: position.y, scale: position.scale };
-    const phases = [];
-
-    if (pullDuration > 0 && pullScale < start.scale - 0.001) phases.push({ x: start.x, y: start.y, scale: pullScale, duration: pullDuration });
-    phases.push({ x: position.x, y: position.y, scale: pullScale, duration: position.duration });
-    if (pullDuration > 0 && pullScale < position.scale - 0.001) phases.push({ ...final, duration: pullDuration });
-    else phases.push({ ...final, duration: 0 });
-
+  applyPosition(position, { force = false, dynamicZoom = false, settings = getCameraSettings() } = {}) {
     try {
-      if (force) this.cancelPanAnimation();
-      for (const phase of phases) {
-        if (phase.duration <= 0) {
-          this.cancelPanAnimation();
-          setCanvasView(phase);
-          continue;
-        }
-        const completed = await this.animatePan(phase, final);
-        if (!completed) return false;
+      const duration = Math.max(0, Number(position.duration) || 0);
+      const target = {
+        ...clampView(position),
+        dynamicZoom: dynamicZoom && travelZoomOutFactor(settings) > 1,
+        zoomOutFactor: travelZoomOutFactor(settings),
+        smoothTime: (duration / 1000) * SMOOTH_TIME_RATIO,
+        travelSmoothTime: travelSmoothTime(settings, duration),
+        zoomSmoothTime: zoomSmoothTime(settings, duration)
+      };
+      if (duration <= 0) {
+        this.stopMotion();
+        this.target = target;
+        return setCanvasView(target);
       }
-      return true;
+      this.target = target;
+      if (this.motion) return this.motionPromise ?? true;
+      if (!force && isViewSettled(getCanvasView(), target)) return true;
+      return this.startMotion();
     } catch (error) {
-      console.warn(`${MODULE_ID} | Spotlight pull-back failed`, error);
+      console.warn(`${MODULE_ID} | Camera reframe failed`, error);
       return false;
     }
   }
 
-  async applyPosition(position, { force = false } = {}) {
-    try {
-      if (force) this.cancelPanAnimation();
-      if (position.duration > 0 && !force && samePanTarget(position, this.panTarget)) return this.panPromise ?? true;
-      if (position.duration > 0) return await this.animatePan(position);
-      this.cancelPanAnimation();
-      return setCanvasView(position);
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Camera reframe failed`, error);
-    }
-  }
-
-  animatePan(position, finalTarget = null) {
-    this.cancelPanAnimation();
-    const start = getCanvasView();
-    const startedAt = performance.now();
-    const duration = Math.max(0, Number(position.duration) || 0);
-    this.panTarget = finalTarget
-      ? { x: finalTarget.x, y: finalTarget.y, scale: finalTarget.scale }
-      : { x: position.x, y: position.y, scale: position.scale };
-
-    this.panPromise = new Promise(resolve => {
-      this.panResolve = resolve;
-      const step = now => {
-        const progress = duration <= 0 ? 1 : clamp((now - startedAt) / duration, 0, 1);
-        const eased = easeOutCubic(progress);
-        setCanvasView({
-          x: lerp(start.x, position.x, eased),
-          y: lerp(start.y, position.y, eased),
-          scale: lerp(start.scale, position.scale, eased),
-          duration: 0
-        });
-
-        if (progress >= 1) {
-          this.panFrame = null;
-          this.panPromise = null;
-          this.panResolve = null;
-          this.panTarget = null;
-          resolve(true);
-          return;
-        }
-        this.panFrame = requestAnimationFrame(step);
-      };
-      this.panFrame = requestAnimationFrame(step);
+  startMotion() {
+    const view = getCanvasView();
+    this.motion = {
+      view: { ...view },
+      velocity: { x: 0, y: 0, zoom: 0, travel: 0 },
+      travel: 0,
+      last: performance.now(),
+      heldSince: 0,
+      frame: null
+    };
+    this.motionPromise = new Promise(resolve => {
+      this.motionResolve = resolve;
     });
-    return this.panPromise;
+    const step = now => {
+      const motion = this.motion;
+      if (!motion) return;
+      const delta = clamp((now - motion.last) / 1000, 0, MAX_FRAME_SECONDS);
+      motion.last = now;
+      let settled = true;
+      try {
+        settled = this.advanceMotion(delta, now);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Camera motion failed`, error);
+        settled = true;
+      }
+      if (settled) return this.finishMotion();
+      motion.frame = requestAnimationFrame(step);
+    };
+    this.motion.frame = requestAnimationFrame(step);
+    return this.motionPromise;
   }
 
-  cancelPanAnimation() {
-    if (this.panFrame) cancelAnimationFrame(this.panFrame);
-    if (this.panResolve) this.panResolve(false);
-    this.panFrame = null;
-    this.panPromise = null;
-    this.panResolve = null;
-    this.panTarget = null;
+  advanceMotion(delta, now) {
+    const motion = this.motion;
+    const target = this.target;
+    if (!motion || !target) return true;
+    if (!canvas?.ready) return true;
+    if (isCanvasInteractionBusy()) {
+      // Hold the camera still while the local user is dragging on the canvas, but never hold
+      // forever if an interaction state gets stuck.
+      if (!motion.heldSince) motion.heldSince = now;
+      motion.view = { ...getCanvasView() };
+      motion.velocity = { x: 0, y: 0, zoom: 0, travel: 0 };
+      motion.travel = 0;
+      if ((now - motion.heldSince) <= INTERACTION_HOLD_MS) return false;
+      this.target = null;
+      return true;
+    }
+    motion.heldSince = 0;
+
+    const viewport = getViewportSize();
+    const span = Math.max(1, Math.max(viewport.width, viewport.height) / Math.max(0.01, motion.view.scale));
+    const distance = Math.hypot(target.x - motion.view.x, target.y - motion.view.y);
+    const desiredTravel = target.dynamicZoom ? clamp(((distance / span) - TRAVEL_DEADZONE) / (1 - TRAVEL_DEADZONE), 0, 1) : 0;
+    motion.travel = clamp(smoothDamp(motion.travel, desiredTravel, motion.velocity, "travel", target.travelSmoothTime, delta), 0, 1);
+
+    const goalScale = clampScale(target.scale / (1 + ((target.zoomOutFactor - 1) * motion.travel)));
+    motion.view.x = smoothDamp(motion.view.x, target.x, motion.velocity, "x", target.smoothTime, delta);
+    motion.view.y = smoothDamp(motion.view.y, target.y, motion.velocity, "y", target.smoothTime, delta);
+    motion.view.scale = Math.exp(smoothDamp(Math.log(motion.view.scale), Math.log(goalScale), motion.velocity, "zoom", target.zoomSmoothTime, delta));
+
+    setCanvasView(motion.view);
+    if (motion.travel > SETTLE_TRAVEL) return false;
+    if (Math.hypot(motion.velocity.x, motion.velocity.y) > SETTLE_SPEED) return false;
+    return isViewSettled(motion.view, target);
+  }
+
+  finishMotion() {
+    const resolve = this.motionResolve;
+    if (this.motion?.frame) cancelAnimationFrame(this.motion.frame);
+    this.motion = null;
+    this.motionPromise = null;
+    this.motionResolve = null;
+    if (this.target && canvas?.ready) setCanvasView(this.target);
+    if (resolve) resolve(true);
+    return true;
+  }
+
+  stopMotion() {
+    const resolve = this.motionResolve;
+    if (this.motion?.frame) cancelAnimationFrame(this.motion.frame);
+    this.motion = null;
+    this.motionPromise = null;
+    this.motionResolve = null;
+    this.target = null;
+    if (resolve) resolve(false);
   }
 
   cacheTokenDestination(doc, changes) {
@@ -334,6 +466,17 @@ export class CameraController {
   }
 }
 
+function mergeReframeOptions(current, options) {
+  const merged = { ...(current ?? {}), ...options };
+  if (current) {
+    merged.force = Boolean(current.force || options.force);
+    merged.explicit = Boolean(current.explicit || options.explicit);
+    merged.immediate = Boolean(current.immediate || options.immediate);
+    merged.animate = current.animate === false || options.animate === false ? false : merged.animate;
+  }
+  return merged;
+}
+
 function centeredPosition(bounds, scale, padding) {
   return {
     x: bounds.x + (bounds.width / 2) - ((padding.left - padding.right) / 2 / scale),
@@ -342,38 +485,119 @@ function centeredPosition(bounds, scale, padding) {
   };
 }
 
+function animationDuration(settings) {
+  return Math.max(0, Number(settings.animationDurationMs) || 0);
+}
+
 function spotlightZoom(settings) {
   const zoom = Number(settings.spotlightZoom);
   return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
 }
 
-function pullbackFactor(settings) {
+/**
+ * How far the camera pulls back while it travels. Kept under the legacy `spotlightPullback*` keys,
+ * but the travel zoom-out now applies to every token-following mode, not just spotlight.
+ */
+function travelZoomOutFactor(settings) {
+  if (settings.spotlightPullback === false) return 1;
   const factor = Number(settings.spotlightPullbackFactor);
   return Number.isFinite(factor) && factor > 1 ? factor : 1;
 }
 
-function shouldPullBack(settings, previous, position, tokenId) {
-  if (settings.spotlightPullback === false) return false;
-  if (pullbackFactor(settings) <= 1) return false;
-  if (!(Number(settings.spotlightPullbackDurationMs) > 0)) return false;
-  if (!previous) return false;
-  if (previous.tokenId !== tokenId) return true;
-  const threshold = (canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100) / 4;
-  return Math.hypot(position.x - previous.x, position.y - previous.y) > threshold;
+function travelSmoothTime(settings, duration) {
+  const configured = Math.max(0, Number(settings.spotlightPullbackDurationMs) || 0);
+  return ((configured > 0 ? configured : duration / 2) / 1000) * SMOOTH_TIME_RATIO;
 }
 
-function getCameraPadding(settings, viewport) {
-  const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100;
-  return {
-    top: sidePadding(settings.paddingPercentTop, viewport.height, settings.paddingGridSpacesTop, gridSize),
-    right: sidePadding(settings.paddingPercentRight, viewport.width, settings.paddingGridSpacesRight, gridSize),
-    bottom: sidePadding(settings.paddingPercentBottom, viewport.height, settings.paddingGridSpacesBottom, gridSize),
-    left: sidePadding(settings.paddingPercentLeft, viewport.width, settings.paddingGridSpacesLeft, gridSize)
-  };
+function zoomSmoothTime(settings, duration) {
+  const pan = (duration / 1000) * SMOOTH_TIME_RATIO;
+  const travel = travelSmoothTime(settings, duration);
+  return Math.max(MIN_SMOOTH_TIME, Math.min(pan, Math.max(travel, pan / 2)));
 }
 
-function sidePadding(percent, viewportSize, gridSpaces, gridSize) {
-  return (Math.max(0, Number(percent) || 0) / 100 * viewportSize) + (Math.max(0, Number(gridSpaces) || 0) * gridSize);
+/**
+ * Critically damped smoothing (no overshoot) that keeps its velocity between frames, which is what
+ * makes a mid-flight retarget bend the current move instead of snapping to a new one.
+ */
+function smoothDamp(current, target, velocities, key, smoothTime, delta) {
+  if (!(delta > 0)) return current;
+  const time = Math.max(MIN_SMOOTH_TIME, Number(smoothTime) || 0);
+  const omega = 2 / time;
+  const x = omega * delta;
+  const decay = 1 / (1 + x + (0.48 * x * x) + (0.235 * x * x * x));
+  const change = current - target;
+  const velocity = Number(velocities[key]) || 0;
+  const temp = (velocity + (omega * change)) * delta;
+  velocities[key] = (velocity - (omega * temp)) * decay;
+  return target + ((change + temp) * decay);
+}
+
+function isViewSettled(view, target) {
+  if (!view || !target) return false;
+  if (Math.abs(view.scale - target.scale) > SETTLE_SCALE * Math.max(1, target.scale)) return false;
+  return Math.hypot(view.x - target.x, view.y - target.y) <= SETTLE_DISTANCE;
+}
+
+/**
+ * Foundry constrains any view it is asked for. Clamping the destination the same way up front keeps
+ * the module's idea of the camera in step with what is actually on screen, so a framing that would
+ * run off the canvas lands as close as the canvas allows instead of chasing a point it can never
+ * reach.
+ */
+function clampView(position) {
+  const scale = clampScale(position.scale);
+  const viewport = getViewportSize();
+  const dimensions = canvas?.dimensions;
+  const width = Number(dimensions?.width) || 0;
+  const height = Number(dimensions?.height) || 0;
+  let x = Number(position.x);
+  let y = Number(position.y);
+  if (!Number.isFinite(x)) x = 0;
+  if (!Number.isFinite(y)) y = 0;
+  if (width > 0) {
+    const pad = 0.4 * (viewport.width / scale);
+    x = clamp(x, -pad, width + pad);
+  }
+  if (height > 0) {
+    const pad = 0.4 * (viewport.height / scale);
+    y = clamp(y, -pad, height + pad);
+  }
+  return { x, y, scale };
+}
+
+function clampScale(scale) {
+  const value = Number(scale);
+  const max = Number(CONFIG?.Canvas?.maxZoom) || 3;
+  const viewport = getViewportSize();
+  const dimensions = canvas?.dimensions;
+  const width = Number(dimensions?.width) || 0;
+  const height = Number(dimensions?.height) || 0;
+  const ratio = Math.max(width / Math.max(1, viewport.width), height / Math.max(1, viewport.height), max);
+  const min = 1 / ratio;
+  if (!Number.isFinite(value) || value <= 0) return min;
+  return clamp(value, min, max);
+}
+
+/**
+ * True while this client is mid-interaction on the canvas (dragging a token, drawing a ruler,
+ * placing a preview). The camera stays off the canvas transform until that finishes.
+ */
+function isCanvasInteractionBusy() {
+  try {
+    if (canvas?.activeLayer?.preview?.children?.length) return true;
+    if (canvas?.tokens?.preview?.children?.length) return true;
+    if (canvas?.controls?.ruler?.active) return true;
+    const dragState = interactionDragState();
+    return (canvas?.tokens?.placeables ?? []).some(token => Number(token?.mouseInteractionManager?.state) >= dragState);
+  } catch (_error) {
+    return false;
+  }
+}
+
+function interactionDragState() {
+  const states = foundry?.canvas?.interaction?.MouseInteractionManager?.INTERACTION_STATES
+    ?? globalThis.MouseInteractionManager?.INTERACTION_STATES;
+  return Number(states?.DRAG) || 3;
 }
 
 function getActiveCombatant(combat) {
@@ -417,9 +641,36 @@ function isPartyToken(token) {
   return Boolean(token?.actor?.hasPlayerOwner || hasPlayerOwner(token?.actor));
 }
 
+function targetsOfToken(token) {
+  const users = controllingUsers(token);
+  const targets = [];
+  for (const user of users) {
+    for (const target of (user?.targets ?? [])) targets.push(target);
+  }
+  return targets;
+}
+
+function controllingUsers(token) {
+  const users = (game?.users?.contents ?? []).filter(user => user?.active);
+  const actor = token?.actor;
+  const owners = users.filter(user => !user.isGM && isActorOwner(actor, user));
+  if (owners.length) return owners;
+  return users.filter(user => user.isGM);
+}
+
+function isActorOwner(actor, user) {
+  if (!actor || !user) return false;
+  if (typeof actor.testUserPermission === "function") {
+    return actor.testUserPermission(user, CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
+  }
+  const level = actor.ownership?.[user.id];
+  return Number(level) >= (CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
+}
+
 function tokenBounds(token, destination = null) {
   const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100;
   const document = token?.document;
+  if (!document && !token) return null;
   const width = (destination?.width ?? document?.width ?? 1) * gridSize;
   const height = (destination?.height ?? document?.height ?? 1) * gridSize;
   return {
@@ -486,8 +737,9 @@ function getCanvasView() {
 }
 
 function setCanvasView(position) {
-  if (typeof canvas?.pan === "function") return canvas.pan({ ...position, duration: 0 });
-  return setCanvasStageView(position);
+  if (typeof canvas?.pan !== "function") return setCanvasStageView(position);
+  canvas.pan({ x: position.x, y: position.y, scale: position.scale, duration: 0 });
+  return true;
 }
 
 function setCanvasStageView(position) {
@@ -499,19 +751,6 @@ function setCanvasStageView(position) {
     return true;
   }
   return false;
-}
-
-function lerp(start, end, amount) {
-  return start + ((end - start) * amount);
-}
-
-function easeOutCubic(value) {
-  return 1 - Math.pow(1 - value, 3);
-}
-
-function samePanTarget(a, b) {
-  if (!a || !b) return false;
-  return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.scale - b.scale) < 0.001;
 }
 
 function clamp(value, min, max) {
