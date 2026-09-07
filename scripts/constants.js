@@ -64,6 +64,7 @@ export const DEFAULT_CAMERA_SETTINGS = {
   maxZoom: 1.5,
   animationDurationMs: 750,
   excludeDefeated: true,
+  includeTargets: true,
   spotlightZoom: 1,
   spotlightPlayersOnly: false,
   spotlightPullback: true,
