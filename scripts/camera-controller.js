@@ -117,13 +117,18 @@ export class CameraController {
     }, REFRAME_DEBOUNCE_MS);
   }
 
+  /**
+   * The queued reframe runs detached from whatever scheduled it, so nothing is left to observe its
+   * result. Failures are logged here rather than surfacing as an unhandled rejection, which is how a
+   * broken reframe could previously look like a camera that simply never moved.
+   */
   #queueFrame() {
     if (this.queuedFrame) return;
     this.queuedFrame = requestAnimationFrame(() => {
       this.queuedFrame = null;
       const options = this.queued ?? {};
       this.queued = null;
-      this.reframe(options);
+      this.reframe(options).catch(error => console.error(`${MODULE_ID} | Camera reframe failed`, error));
     });
   }
 
@@ -598,6 +603,25 @@ function interactionDragState() {
   const states = foundry?.canvas?.interaction?.MouseInteractionManager?.INTERACTION_STATES
     ?? globalThis.MouseInteractionManager?.INTERACTION_STATES;
   return Number(states?.DRAG) || 3;
+}
+
+/**
+ * Padding reserved on each side of the viewport, as a percentage of the viewport plus a number of
+ * grid spaces. Framing fits inside what is left, which is what keeps overlays (chat, dialogs) clear
+ * of the tokens the camera is following.
+ */
+function getCameraPadding(settings, viewport) {
+  const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100;
+  return {
+    top: sidePadding(settings.paddingPercentTop, viewport.height, settings.paddingGridSpacesTop, gridSize),
+    right: sidePadding(settings.paddingPercentRight, viewport.width, settings.paddingGridSpacesRight, gridSize),
+    bottom: sidePadding(settings.paddingPercentBottom, viewport.height, settings.paddingGridSpacesBottom, gridSize),
+    left: sidePadding(settings.paddingPercentLeft, viewport.width, settings.paddingGridSpacesLeft, gridSize)
+  };
+}
+
+function sidePadding(percent, viewportSize, gridSpaces, gridSize) {
+  return (Math.max(0, Number(percent) || 0) / 100 * viewportSize) + (Math.max(0, Number(gridSpaces) || 0) * gridSize);
 }
 
 function getActiveCombatant(combat) {
