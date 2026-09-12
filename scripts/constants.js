@@ -17,8 +17,7 @@ export const CLASSES = {
 };
 
 export const FLAGS = {
-  trackedTokenIds: "trackedTokenIds",
-  sceneCameraOverride: "sceneCameraOverride"
+  trackedTokenIds: "trackedTokenIds"
 };
 
 export const CAMERA_MODES = {
