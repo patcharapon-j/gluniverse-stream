@@ -22,6 +22,8 @@ export class TargetLineController {
   core = null;
   stopListening = null;
   syncQueued = false;
+  turnContext = undefined;
+  carriedTargets = new Map();
 
   registerHooks() {
     Hooks.on("canvasReady", () => {
@@ -31,8 +33,13 @@ export class TargetLineController {
     });
     Hooks.on("canvasTearDown", () => this.#teardown());
     const refresh = () => this.refresh();
+    Hooks.on("targetToken", (user, token) => {
+      this.#updateTurnContext();
+      // A fresh target event belongs to this turn, even if it arrives before the queued redraw.
+      this.carriedTargets.get(user.id)?.delete(token.document.id);
+      this.refresh();
+    });
     for (const hook of [
-      "targetToken",
       "combatStart",
       "combatTurnChange",
       "createCombat",
@@ -60,6 +67,7 @@ export class TargetLineController {
 
   /** Reconcile lines with the current combat and targets on the next frame; repeated calls coalesce. */
   refresh() {
+    this.#updateTurnContext();
     if (this.syncQueued) return;
     this.syncQueued = true;
     requestAnimationFrame(() => {
@@ -70,6 +78,25 @@ export class TargetLineController {
         console.error(`${MODULE_ID} | Targeting line update failed`, error);
       }
     });
+  }
+
+  #updateTurnContext() {
+    const combat = getActiveSceneCombat();
+    const context = combat?.started
+      ? JSON.stringify([canvas?.scene?.id, combat.id, combat.round, combat.turn, getActiveCombatant(combat)?.id])
+      : null;
+    if (context === this.turnContext) return;
+    this.carriedTargets.clear();
+    // Foundry targets belong to users, not creatures. Do not reassign an unchanged selection
+    // to the next combatant, including another NPC controlled by the same GM.
+    if (this.turnContext !== undefined) {
+      for (const user of game.users?.contents ?? []) {
+        this.carriedTargets.set(user.id, new Set(
+          [...(user.targets ?? [])].map(target => target.document.id)
+        ));
+      }
+    }
+    this.turnContext = context;
   }
 
   #sync() {
@@ -113,7 +140,8 @@ export class TargetLineController {
     if (!combat?.started) return desired;
     const source = getCombatantToken(getActiveCombatant(combat));
     if (!isVisibleToken(source)) return desired;
-    for (const target of targetsOfToken(source)) {
+    for (const target of targetsOfToken(source, (user, target) =>
+      !this.carriedTargets.get(user.id)?.has(target.document.id))) {
       if (!isVisibleToken(target)) continue;
       const sourceId = source.document.id;
       const targetId = target.document.id;
