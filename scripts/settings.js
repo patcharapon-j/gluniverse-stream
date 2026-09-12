@@ -3,8 +3,10 @@ import {
   DEFAULT_CAMERA_SETTINGS,
   DEFAULT_CHAT_SETTINGS,
   DEFAULT_DIALOG_SETTINGS,
+  DEFAULT_TARGETING_SETTINGS,
   DEFAULT_UI_RULES,
-  MODULE_ID
+  MODULE_ID,
+  TARGET_LINE_VISIBILITY
 } from "./constants.js";
 import { requestSettingSet } from "./socket.js";
 
@@ -15,15 +17,20 @@ const SETTINGS = {
   cameraSettings: { type: Object, default: DEFAULT_CAMERA_SETTINGS, config: false },
   chatSettings: { type: Object, default: DEFAULT_CHAT_SETTINGS, config: false },
   dialogSettings: { type: Object, default: DEFAULT_DIALOG_SETTINGS, config: false },
-  uiRules: { type: Object, default: DEFAULT_UI_RULES, config: false }
+  targetingSettings: { type: Object, default: DEFAULT_TARGETING_SETTINGS, config: false },
+  uiRules: { type: Object, default: DEFAULT_UI_RULES, config: false },
+  showTargetLines: { type: Boolean, default: true, config: true, scope: "client" }
 };
+
+const TARGET_LINE_COLOR_KEYS = ["colorFriendlyToHostile", "colorHostileToFriendly", "colorSameSide", "colorOther"];
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 export function registerSettings() {
   for (const [key, data] of Object.entries(SETTINGS)) {
     game.settings.register(MODULE_ID, key, {
       name: game.i18n.localize(`GLUNIVERSE_STREAM.settings.${key}.name`),
       hint: game.i18n.localize(`GLUNIVERSE_STREAM.settings.${key}.hint`),
-      scope: "world",
+      scope: data.scope ?? "world",
       config: data.config,
       type: data.type,
       default: duplicateDefault(data.default),
@@ -38,7 +45,7 @@ export function getSetting(key) {
 
 export async function setSetting(key, value) {
   const sanitized = sanitizeSetting(key, value);
-  if (game.user?.isGM) return game.settings.set(MODULE_ID, key, sanitized);
+  if (SETTINGS[key]?.scope === "client" || game.user?.isGM) return game.settings.set(MODULE_ID, key, sanitized);
   requestSettingSet(key, sanitized);
   return sanitized;
 }
@@ -58,6 +65,10 @@ export function getChatSettings() {
 
 export function getDialogSettings() {
   return { ...DEFAULT_DIALOG_SETTINGS, ...(getSetting("dialogSettings") ?? {}) };
+}
+
+export function getTargetingSettings() {
+  return getSetting("targetingSettings");
 }
 
 export function getUiRules() {
@@ -94,10 +105,14 @@ export function sanitizeSetting(key, value) {
       return sanitizeObject(value, DEFAULT_CHAT_SETTINGS);
     case "dialogSettings":
       return sanitizeObject(value, DEFAULT_DIALOG_SETTINGS);
+    case "targetingSettings":
+      return sanitizeTargetingSettings(value);
     case "uiRules":
       return sanitizeUiRules(value);
     case "streamUserId":
       return typeof value === "string" ? value : "";
+    case "showTargetLines":
+      return value !== false;
     default:
       return value ?? SETTINGS[key]?.default;
   }
@@ -126,6 +141,17 @@ function sanitizeCameraSettings(value) {
   const panSpeed = Number(migrated.panSpeed);
   migrated.panSpeed = Number.isFinite(panSpeed) && panSpeed > 0 ? panSpeed : DEFAULT_CAMERA_SETTINGS.panSpeed;
   return pickDefaults(migrated, DEFAULT_CAMERA_SETTINGS);
+}
+
+function sanitizeTargetingSettings(value) {
+  const settings = pickDefaults((value && typeof value === "object") ? value : {}, DEFAULT_TARGETING_SETTINGS);
+  settings.enabled = settings.enabled !== false;
+  if (!Object.values(TARGET_LINE_VISIBILITY).includes(settings.visibility)) settings.visibility = DEFAULT_TARGETING_SETTINGS.visibility;
+  for (const key of TARGET_LINE_COLOR_KEYS) {
+    if (!HEX_COLOR.test(String(settings[key]))) settings[key] = DEFAULT_TARGETING_SETTINGS[key];
+  }
+  settings.intensity = Math.min(2, Math.max(0.25, numberOrDefault(settings.intensity, DEFAULT_TARGETING_SETTINGS.intensity)));
+  return settings;
 }
 
 function migrateSidePadding(migrated, source, uniformKey, uniformDefault, sideKeys) {

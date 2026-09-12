@@ -77,6 +77,23 @@
 </section>
 
 <section class="gluniverse-stream-panel">
+  <h2>Targeting Lines</h2>
+  <div class="gluniverse-stream-number-grid">
+    <label><input type="checkbox" name="targeting.enabled" {{#if targeting.enabled}}checked{{/if}}> Show targeting lines</label>
+    <label>Visible to <select name="targeting.visibility">{{#each targetVisibilityOptions}}<option value="{{value}}" {{selected}}>{{label}}</option>{{/each}}</select></label>
+    <label>Intensity <input type="range" name="targeting.intensity" value="{{targeting.intensity}}" min="0.25" max="2" step="0.05" title="Line width and glow strength."></label>
+  </div>
+  <h3>Colors</h3>
+  <div class="gluniverse-stream-number-grid">
+    <label class="gluniverse-stream-color"><input type="color" name="targeting.colorFriendlyToHostile" value="{{targeting.colorFriendlyToHostile}}"> Friendly &rarr; hostile</label>
+    <label class="gluniverse-stream-color"><input type="color" name="targeting.colorHostileToFriendly" value="{{targeting.colorHostileToFriendly}}"> Hostile &rarr; friendly</label>
+    <label class="gluniverse-stream-color"><input type="color" name="targeting.colorSameSide" value="{{targeting.colorSameSide}}"> Same side</label>
+    <label class="gluniverse-stream-color"><input type="color" name="targeting.colorOther" value="{{targeting.colorOther}}"> Neutral / other</label>
+  </div>
+  <p class="gluniverse-stream-form-hint"><small>During combat, draws a glowing line from the combatant whose turn it is to every token it targets. Each client only draws lines between tokens it can see, and secret dispositions count as neutral. Players can also hide lines on their own screen under Configure Settings.</small></p>
+</section>
+
+<section class="gluniverse-stream-panel">
   <h2>Tracking</h2>
   <table>
     <thead><tr><th>Token</th><th>Actor</th><th>State</th><th></th></tr></thead>

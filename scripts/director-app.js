@@ -4,13 +4,30 @@ import {
   CHAT_POSITIONS,
   MODULE_ID,
   SCENE_VIEW_MODES,
-  STREAM_COMMANDS
+  STREAM_COMMANDS,
+  TARGET_LINE_VISIBILITY
 } from "./constants.js";
-import { getCameraSettings, getChatSettings, getDialogSettings, getSetting, getUiRules, isDirectorUser, setSetting } from "./settings.js";
+import {
+  getCameraSettings,
+  getChatSettings,
+  getDialogSettings,
+  getSetting,
+  getTargetingSettings,
+  getUiRules,
+  isDirectorUser,
+  setSetting
+} from "./settings.js";
 import { getStreamClientStatus, requestStreamClientStatus, sendStreamCommand } from "./socket.js";
 
 let services = {};
 let instance = null;
+
+const OBJECT_SETTINGS = {
+  camera: { key: "cameraSettings", get: getCameraSettings },
+  chat: { key: "chatSettings", get: getChatSettings },
+  dialog: { key: "dialogSettings", get: getDialogSettings },
+  targeting: { key: "targetingSettings", get: getTargetingSettings }
+};
 
 export function configureDirectorApp(nextServices) {
   services = nextServices;
@@ -83,6 +100,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const camera = getCameraSettings();
     const chat = getChatSettings();
     const dialog = getDialogSettings();
+    const targeting = getTargetingSettings();
     const uiRules = getUiRules();
     const status = getStreamClientStatus();
     const activeMode = getActiveCameraMode(camera);
@@ -121,6 +139,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       spotlightSelected: camera.combatMode === CAMERA_MODES.spotlight,
       chat,
       dialog,
+      targeting,
       tokenRows: services.tokenTracking?.getTokenRows() ?? [],
       combatRows: getCombatRows(),
       detectedUi: services.uiDetector?.getEntries() ?? [],
@@ -144,6 +163,11 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         [SCENE_VIEW_MODES.fitBackground]: "Fit background",
         [SCENE_VIEW_MODES.fillBackground]: "Fill background"
       }, camera.sceneViewMode),
+      targetVisibilityOptions: optionsFor({
+        [TARGET_LINE_VISIBILITY.everyone]: "Everyone",
+        [TARGET_LINE_VISIBILITY.gmAndStream]: "GMs and the stream",
+        [TARGET_LINE_VISIBILITY.streamOnly]: "Stream only"
+      }, targeting.visibility),
       chatPositionOptions: optionsFor(Object.fromEntries(CHAT_POSITIONS.map(position => [position, labelize(position)])), chat.position)
     };
   }
@@ -208,9 +232,8 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const ids = Array.from(this.element.querySelectorAll("input[name='trustedDirectorUserIds']:checked")).map(input => input.value);
       return this.#setAndRender("trustedDirectorUserIds", ids);
     }
-    if (name.startsWith("camera.")) return this.#updateObject("cameraSettings", name.slice(7), fieldValue(target));
-    if (name.startsWith("chat.")) return this.#updateObject("chatSettings", name.slice(5), fieldValue(target));
-    if (name.startsWith("dialog.")) return this.#updateObject("dialogSettings", name.slice(7), fieldValue(target));
+    const [group, ...field] = name.split(".");
+    if (OBJECT_SETTINGS[group] && field.length) return this.#updateObject(OBJECT_SETTINGS[group], field.join("."), fieldValue(target));
   }
 
   async #onClick(event) {
@@ -253,10 +276,9 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     await setSetting(key, value);
   }
 
-  async #updateObject(key, field, value) {
+  async #updateObject(setting, field, value) {
     this.#captureScroll();
-    const current = key === "cameraSettings" ? getCameraSettings() : key === "chatSettings" ? getChatSettings() : getDialogSettings();
-    await setSetting(key, { ...current, [field]: value });
+    await setSetting(setting.key, { ...setting.get(), [field]: value });
   }
 
   async #addSelectorRule() {
@@ -320,6 +342,6 @@ function labelize(value) {
 
 function fieldValue(target) {
   if (target.type === "checkbox") return target.checked;
-  if (target.type === "number" || target.dataset.type === "number") return Number(target.value);
+  if (target.type === "number" || target.type === "range" || target.dataset.type === "number") return Number(target.value);
   return target.value;
 }

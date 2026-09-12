@@ -74,6 +74,23 @@ export const DEFAULT_DIALOG_SETTINGS = {
   lifetimeMs: 10000
 };
 
+export const TARGET_LINE_VISIBILITY = {
+  everyone: "everyone",
+  gmAndStream: "gmAndStream",
+  streamOnly: "streamOnly"
+};
+
+export const DEFAULT_TARGETING_SETTINGS = {
+  enabled: true,
+  visibility: TARGET_LINE_VISIBILITY.everyone,
+  colorFriendlyToHostile: "#4db8ff",
+  colorHostileToFriendly: "#ff4a5c",
+  colorSameSide: "#52f5a0",
+  colorOther: "#ffd35c",
+  /** Line width and glow multiplier, 0.25 to 2. */
+  intensity: 1
+};
+
 export const DEFAULT_UI_RULES = {
   elementRules: {},
   elementZIndex: {},

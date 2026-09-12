@@ -3,7 +3,7 @@ import { getSetting, isConfiguredStreamUser, isDirectorUser, sanitizeSetting } f
 
 let services = {};
 const clientStatusByUser = new Map();
-const DIRECTOR_SETTING_KEYS = new Set(["streamUserId", "autoStartStreamUserIds", "trustedDirectorUserIds", "cameraSettings", "chatSettings", "dialogSettings", "uiRules"]);
+const DIRECTOR_SETTING_KEYS = new Set(["streamUserId", "autoStartStreamUserIds", "trustedDirectorUserIds", "cameraSettings", "chatSettings", "dialogSettings", "targetingSettings", "uiRules"]);
 
 export function registerSocket(nextServices) {
   services = nextServices;
