@@ -1,5 +1,5 @@
 import { MODULE_ID } from "./constants.js";
-import { CameraController } from "./camera-controller.js";
+import { CameraController } from "./camera/controller.js";
 import { ChatOverlay } from "./chat-overlay.js";
 import { configureDirectorApp, addStreamSceneControl, renderDirectorApp } from "./director-app.js";
 import { DialogOverlay } from "./dialog-overlay.js";

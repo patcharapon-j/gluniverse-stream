@@ -103,20 +103,38 @@ export function sanitizeSetting(key, value) {
   }
 }
 
+/**
+ * Camera settings are rebuilt from the current defaults' keys, so settings the camera no longer reads
+ * drop out the next time a Director saves. Older worlds are migrated on the way:
+ * - `nonCombatMode`, `mode` and `sceneModeView` became the current mode keys.
+ * - Uniform `paddingPercent` / `paddingGridSpaces` became per-side padding.
+ * - `spotlightPullback` + `spotlightPullbackFactor` became `travelZoomOut` (1 means off). The old
+ *   "Follow ms" and "Zoom-out ms" durations have no speed equivalent, so pan speed starts at default.
+ */
 function sanitizeCameraSettings(value) {
   const source = (value && typeof value === "object") ? value : {};
   const migrated = { ...source };
   if (!migrated.outOfCombatMode && source.nonCombatMode) migrated.outOfCombatMode = migrateCameraMode(source.nonCombatMode);
   if (!migrated.combatMode && source.mode) migrated.combatMode = source.mode === "combat" ? CAMERA_MODES.combatants : migrateCameraMode(source.mode);
   if (!migrated.sceneViewMode && source.sceneModeView) migrated.sceneViewMode = source.sceneModeView;
-  migrateSidePadding(migrated, source, "paddingPercent", ["paddingPercentTop", "paddingPercentRight", "paddingPercentBottom", "paddingPercentLeft"]);
-  migrateSidePadding(migrated, source, "paddingGridSpaces", ["paddingGridSpacesTop", "paddingGridSpacesRight", "paddingGridSpacesBottom", "paddingGridSpacesLeft"]);
-  return sanitizeObject(migrated, DEFAULT_CAMERA_SETTINGS);
+  migrateSidePadding(migrated, source, "paddingPercent", 10, ["paddingPercentTop", "paddingPercentRight", "paddingPercentBottom", "paddingPercentLeft"]);
+  migrateSidePadding(migrated, source, "paddingGridSpaces", 0, ["paddingGridSpacesTop", "paddingGridSpacesRight", "paddingGridSpacesBottom", "paddingGridSpacesLeft"]);
+  if (!Number.isFinite(Number(source.travelZoomOut)) && ("spotlightPullback" in source || "spotlightPullbackFactor" in source)) {
+    migrated.travelZoomOut = source.spotlightPullback === false ? 1 : numberOrDefault(source.spotlightPullbackFactor, DEFAULT_CAMERA_SETTINGS.travelZoomOut);
+  }
+  migrated.travelZoomOut = Math.max(1, numberOrDefault(migrated.travelZoomOut, DEFAULT_CAMERA_SETTINGS.travelZoomOut));
+  const panSpeed = Number(migrated.panSpeed);
+  migrated.panSpeed = Number.isFinite(panSpeed) && panSpeed > 0 ? panSpeed : DEFAULT_CAMERA_SETTINGS.panSpeed;
+  return pickDefaults(migrated, DEFAULT_CAMERA_SETTINGS);
 }
 
-function migrateSidePadding(migrated, source, uniformKey, sideKeys) {
-  const uniform = numberOrDefault(source[uniformKey], DEFAULT_CAMERA_SETTINGS[uniformKey]);
+function migrateSidePadding(migrated, source, uniformKey, uniformDefault, sideKeys) {
+  const uniform = numberOrDefault(source[uniformKey], uniformDefault);
   for (const key of sideKeys) migrated[key] = numberOrDefault(source[key], uniform);
+}
+
+function pickDefaults(value, defaults) {
+  return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, key in value ? value[key] : fallback]));
 }
 
 function numberOrDefault(value, fallback) {
