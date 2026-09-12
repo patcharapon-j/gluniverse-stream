@@ -26,12 +26,12 @@ export function isPartyToken(token) {
  * are the targets of the users who control it: its actor's active player owners, or the active GMs
  * for tokens no active player owns.
  */
-export function targetsOfToken(token) {
+export function targetsOfToken(token, includeTarget = () => true) {
   const targets = new Map();
   for (const user of controllingUsers(token)) {
     for (const target of (user?.targets ?? [])) {
       const id = target?.document?.id;
-      if (id && !targets.has(id)) targets.set(id, target);
+      if (id && !targets.has(id) && includeTarget(user, target)) targets.set(id, target);
     }
   }
   return [...targets.values()];
