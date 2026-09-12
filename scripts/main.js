@@ -3,6 +3,7 @@ import { CameraController } from "./camera-controller.js";
 import { ChatOverlay } from "./chat-overlay.js";
 import { configureDirectorApp, addStreamSceneControl, renderDirectorApp } from "./director-app.js";
 import { DialogOverlay } from "./dialog-overlay.js";
+import { registerMotionEngine } from "./motion/engine.js";
 import { registerSettings } from "./settings.js";
 import { registerSocket } from "./socket.js";
 import { StreamMode } from "./stream-mode.js";
@@ -12,6 +13,7 @@ import { UiDetector } from "./ui-detector.js";
 const state = {};
 
 Hooks.once("init", () => {
+  registerMotionEngine();
   registerSettings();
   registerKeybindings();
   foundry.applications.handlebars.loadTemplates([
