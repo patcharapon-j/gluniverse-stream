@@ -14,7 +14,7 @@ The module must be conservative. It must not alter permissions, token visibility
 - A Director may request that the stream user start, stop, restore UI, or reframe. A Director request must not bypass the stream user's normal visibility or fog.
 - Visibility-sensitive camera target selection must run on the stream client only.
 - Directors can configure settings, but the stream client applies those settings locally.
-- Manually tracked tokens and per-scene camera overrides are scene-local flags, not actor data and not world-level token maps.
+- Manually tracked tokens are scene-local flags, not actor data and not world-level token maps.
 - Core Foundry UI is hidden by CSS while stream mode is active. The canvas remains visible and usable.
 - Avoid hiding broad layout containers when narrower core selectors are available, because third-party modules may place UI inside Foundry layout regions.
 - Third-party UI is visible by default unless blocked by a rule.
@@ -43,13 +43,13 @@ Behavior:
 - Opens the Director interface.
 - Configures stream settings.
 - Requests stream start/stop/restore/reframe commands.
-- Manages scene-local tracked tokens and current-scene camera override.
+- Manages scene-local tracked tokens.
 
 Trusted non-GM Directors cannot write world settings or scene flags directly. Their changes are relayed over a module socket to one active GM, which validates that the requester is still a Director before writing.
 
 ### Regular Users
 
-Regular users see no module UI and experience no UI hiding.
+Regular users see no module UI and experience no UI hiding. Depending on the targeting settings they may see combat targeting lines, which they can hide for themselves with a client setting.
 
 ## Data Model
 
@@ -57,37 +57,45 @@ World settings:
 
 - `streamUserId`: string user id or empty string.
 - `trustedDirectorUserIds`: array of user ids.
+- `autoStartStreamUserIds`: array of stream user ids that skip the start prompt.
 - `cameraSettings`: global camera settings.
 - `chatSettings`: global chat overlay settings.
 - `dialogSettings`: global dialog overlay settings.
+- `targetingSettings`: global combat targeting line settings.
 - `uiRules`: selector and detected-element allow/block rules, plus per-element z-index overrides applied to allowed elements in stream mode.
+
+Client settings:
+
+- `showTargetLines`: boolean, default `true`. Lets each client hide targeting lines locally.
 
 Scene flags under `gluniverse-stream`:
 
 - `trackedTokenIds`: array of token document ids for manual token tracking.
-- `sceneCameraOverride`: object for current-scene camera behavior, currently `{ sceneInitialView }`.
 
 Default settings:
 
 ```json
 {
   "cameraSettings": {
-    "mode": "combat",
-    "nonCombatMode": "scene",
-    "sceneModeView": "fitBackground",
-    "sceneInitialView": "fillBackground",
-    "paddingPercent": 10,
-    "paddingGridSpaces": 0,
+    "outOfCombatMode": "scene",
+    "combatMode": "combatants",
+    "sceneViewMode": "fitBackground",
+    "paddingPercentTop": 10,
+    "paddingPercentRight": 10,
+    "paddingPercentBottom": 10,
+    "paddingPercentLeft": 10,
+    "paddingGridSpacesTop": 0,
+    "paddingGridSpacesRight": 0,
+    "paddingGridSpacesBottom": 0,
+    "paddingGridSpacesLeft": 0,
     "minZoom": 0.5,
     "maxZoom": 1.5,
-    "animationDurationMs": 750,
+    "panSpeed": 12,
     "excludeDefeated": true,
     "includeTargets": true,
     "spotlightZoom": 1,
-    "spotlightPlayersOnly": false,
-    "spotlightPullback": true,
-    "spotlightPullbackFactor": 2,
-    "spotlightPullbackDurationMs": 300
+    "travelZoomOut": 2,
+    "spotlightPlayersOnly": false
   },
   "chatSettings": {
     "position": "top-left",
@@ -99,6 +107,15 @@ Default settings:
   "dialogSettings": {
     "lifetimeMs": 10000
   },
+  "targetingSettings": {
+    "enabled": true,
+    "visibility": "everyone",
+    "colorFriendlyToHostile": "#4db8ff",
+    "colorHostileToFriendly": "#ff4a5c",
+    "colorSameSide": "#52f5a0",
+    "colorOther": "#ffd35c",
+    "intensity": 1
+  },
   "uiRules": {
     "elementRules": {},
     "elementZIndex": {},
@@ -106,6 +123,8 @@ Default settings:
   }
 }
 ```
+
+Camera settings are rebuilt from the default keys when read, which migrates older worlds: `nonCombatMode`/`mode`/`sceneModeView` map to the current mode keys, uniform `paddingPercent`/`paddingGridSpaces` expand to per-side padding, and `spotlightPullback` + `spotlightPullbackFactor` become `travelZoomOut` (`1` when the pull-back was disabled). The removed `animationDurationMs`, `spotlightPullbackDurationMs` and `sceneInitialView` keys are dropped.
 
 ## Stream Mode
 
@@ -138,13 +157,20 @@ Required sections:
 - Status: stream user, connected state, last reported active state, current scene, camera mode.
 - Session controls: request start, stop stream mode on the stream client, toggle normal Foundry UI visibility on the stream client, enable/revoke stream-user auto-start, reframe now.
 - Users: select stream user and trusted Directors.
-- Camera: mode, fallback mode, scene fit/fill, scene initial behavior, current-scene override, padding, zoom caps, follow duration, exclude defeated, travel zoom-out settings, keep-targets-in-frame, spotlight zoom and spotlight player filter.
+- Camera: in-combat and out-of-combat modes, scene fit/fill, padding, zoom caps, exclude defeated, pan speed, keep-targets-in-frame, spotlight zoom, travel zoom-out and spotlight player filter.
+- Targeting lines: enable, visible to, the four relationship colors, intensity.
 - Tracking: current canvas tokens with manual track toggle.
 - Chat overlay: position, x/y pixel offset, lifetime, max visible.
 - Dialog overlay: lifetime.
 - UI rules: best-effort detected UI and expert selector rules.
 
 The Director is a control surface. It should not compute stream visibility-sensitive token eligibility.
+
+## Animation
+
+- All module animation runs on the module's own bundled anime.js engine (`scripts/vendor/anime.esm.min.js`), never Foundry's copy.
+- While a canvas exists, the engine is stepped from the canvas ticker between Foundry's token animations and the canvas render, so camera moves and canvas effects land in the same frame the canvas draws. Without a canvas the engine uses its own loop.
+- Calm motion applies on any client that prefers reduced motion (OS/browser) or has Foundry's photosensitive mode on. Chat cards, dialogs and targeting lines switch to plain fades with no scale, blur, sheen, chevrons or spin. The stream camera ignores calm motion.
 
 ## Camera
 
@@ -154,15 +180,19 @@ Modes:
 
 - `scene`: frame scene background bounds.
 - `manual`: do nothing automatically.
-- `players`: frame visible, non-hidden tokens whose actors have player owners.
-- `manualTokens`: frame visible, non-hidden tokens whose token ids are in the current scene flag.
-- `combat`: frame visible, non-hidden combatant tokens on the current scene, excluding defeated combatants by default.
+- `party`: frame visible, non-hidden tokens whose actors have player owners, plus visible tracked tokens.
+- `trackedToken`: frame visible, non-hidden tokens whose token ids are in the current scene flag.
+- `combatants`: frame visible, non-hidden combatant tokens on the current scene, excluding defeated combatants by default.
 - `activeTurn`: frame only the visible, non-hidden token of the combatant whose turn it currently is, plus that token's current targets and any visible manually tracked tokens. The frame advances to the next combatant on each turn change.
 - `spotlight`: in-combat only. Center the visible, non-hidden token of the combatant whose turn it currently is and set the canvas to `spotlightZoom` exactly. This mode overrides fit/fill bounds framing and the `minZoom`/`maxZoom` caps, so the framing distance is identical on every turn. Manually tracked tokens are not unioned in, because spotlight is single-token framing. `spotlightPlayersOnly` restricts the spotlight to player-owned tokens. When there is no eligible spotlight token the camera falls back to `combatants` framing, then to the scene.
 
+Token destinations:
+
+- The camera frames where a token is going, not where it is mid-animation: token bounds come from the document's committed `_source` position and size.
+
 Target framing (`includeTargets`):
 
-- A token's targets are the tokens currently targeted by the users that control it: the player owners of its actor, or the active GMs when no player owns it. Targeting is per-user state in Foundry, so this is read from the users, never written.
+- A token's targets are the tokens currently targeted by the users that control it: the active player owners of its actor, or the active GMs when no active player owns it. Targeting is per-user state in Foundry, so this is read from the users, never written.
 - Only visible, non-hidden target tokens are framed, under the same visibility rule as every other camera target.
 - Every token-following mode (`party`, `trackedToken`, `combatants`, `activeTurn`) unions the targets of the tokens it frames into its bounds.
 - `spotlight` widens from `spotlightZoom` only as far as needed to hold the active token and its targets, and never past `minZoom`. With no targets the framing is unchanged: the active token centered at exactly `spotlightZoom`.
@@ -170,26 +200,22 @@ Target framing (`includeTargets`):
 
 Camera motion:
 
-- The camera runs one continuous, critically damped motion loop rather than per-request tweens. Position and log-zoom each keep their velocity between frames, so retargeting mid-flight (a turn change during a pan, a token moving again while the camera is still travelling) bends the current move instead of restarting it.
-- `animationDurationMs` is the smoothing time: roughly how long the camera takes to reach a new framing. `0` applies the framing instantly.
-- Travel zoom-out (`spotlightPullback`, `spotlightPullbackFactor`, `spotlightPullbackDurationMs`) applies to every token-following mode, not just spotlight. The pull-back is proportional to how far the camera still has to travel, measured against the visible span of the canvas, so short moves barely pull back and cross-map moves pull back to `targetZoom / spotlightPullbackFactor` and ease back in on arrival. `spotlightPullbackDurationMs` is how quickly that zoom-out eases in and out. The transition is skipped when it is disabled or when the factor is not greater than 1.
+- Each camera move is a layer whose clock anime.js animates. Every canvas frame the view is composed from the newest destination plus what remains of each layer's offset from the destination before it, and zoom is composed in log space. A new destination mid-move adds a layer instead of restarting, so position, zoom and velocity stay continuous; duplicate destinations are ignored.
+- Move duration comes from `panSpeed` (grid squares per second) over the distance still to travel, with a zoom-change allowance, clamped to 0.35–2.5 s for glides and 1–3.6 s for flights.
+- Every mode glides: position and zoom ease together.
+- `spotlight` flies when the spotlight token's destination is outside the central half of the current screen (on either axis) and `travelZoomOut` is greater than 1: the camera zooms out, crosses while zoomed out and zooms back in, with the three phases overlapping into one arc. The zoom-out depth scales with the distance in screens, from half of `travelZoomOut` for a short hop up to all of it at two screens or more. Overlapping flights combine their zoom-out as a p-norm, so redirecting mid-flight stays zoomed out rather than zooming out twice.
 - Camera destinations are clamped to what the canvas can actually display before the motion starts, using the same constraints Foundry applies. A framing that would scroll past the edge of the canvas is never skipped or refused: the camera settles as close to it as the canvas allows.
+- Scene load and stream mode activation apply the framing instantly with no animation.
 
 Token movement safety:
 
 - The camera never runs from `preUpdateToken` or any other pre-update hook, and it never moves the canvas synchronously from inside a hook. Reframes are queued and applied on a later animation frame, so module camera work can never interleave with, delay, or cancel a token movement.
-- While a canvas interaction is in progress on the stream client (token drag, ruler, placement preview), the camera holds its position and retries on the next frame instead of moving the canvas out from under the interaction.
+- While a canvas interaction is in progress on the stream client (token drag, ruler, placement preview), the camera holds its position (pausing any move in flight for up to 8 seconds) instead of moving the canvas out from under the interaction.
 
 Visibility rule:
 
 - Use currently available canvas token objects and their normal client visibility state.
 - Do not inspect or bypass fog internals to include tokens the stream client cannot currently see.
-
-Scene initial view:
-
-- On `canvasReady`, apply scene initial view instantly with no animation.
-- Current-scene flag override wins over global setting.
-- Default is `fillBackground`.
 
 Reframing triggers:
 
@@ -200,7 +226,16 @@ Reframing triggers:
 - Manual tracked token changes.
 - Target changes (`targetToken`).
 - Combat creation, start, end, turn/round changes, combat update, and combatant add/remove/defeated changes. In-combat detection scans the combats collection for an active encounter on the current scene rather than relying on `game.combat`/`combats.viewed`, which is unreliable for the stream client because its combat tracker UI is hidden and some systems (e.g. D&D5e, PF2e) bind combats to a scene.
-- Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target. An explicit Director reframe always re-applies the camera: it cancels any in-flight pan animation and bypasses the same-target dedup so the request is never silently dropped.
+- Director reframe request. Explicit Director reframes may frame the scene when the active mode is manual or has no eligible visible token target.
+
+## Targeting Lines
+
+- Drawn on any client allowed by `targetingSettings.visibility` (`everyone`, `gmAndStream`, `streamOnly`) when `targetingSettings.enabled` and the client's `showTargetLines` are on.
+- Only while a started combat exists on the canvas scene. Lines run from the active combatant's token to each token it targets, using the same controlling-user rule as target framing. A token targeting itself gets a reticle with no line.
+- Each client uses its own visibility: a line is drawn only when both tokens are visible and not hidden on that client.
+- Color by disposition: friendly to hostile, hostile to friendly, same non-neutral side, and anything involving a neutral token. Secret disposition counts as neutral.
+- Rendered as a PIXI container in `canvas.interface` at zIndex 1050, above token UI and rulers and below scrolling combat text, with one shared blur filter for the halos. Endpoints follow the tokens' animated positions every canvas frame, starting at the source token's edge and ending at a reticle around the target.
+- Lines draw out from the source and pop the reticle on appear, stream chevrons toward the target while shown, and retract into the source on removal. Re-adding a line that is retracting reverses it. Turn changes retract the old combatant's lines while the new combatant's lines draw in. A canvas teardown clears lines instantly.
 
 ## Token Tracking
 
@@ -216,15 +251,15 @@ Reframing triggers:
 - Clone the final rendered HTML into the module overlay.
 - Do not rebuild system-specific chat cards.
 - Each card expires independently.
-- If visible cards exceed `maxVisible`, remove the oldest.
+- If visible cards exceed `maxVisible`, the oldest animates out.
 - Position is one of `top-left`, `top-right`, `bottom-left`, `bottom-right`.
 - `offsetX` and `offsetY` move the overlay in pixels from the selected position.
 
 ## Dialog Overlay
 
 - Detect dialog-like applications rendered on the stream client.
-- Center the actual dialog element in the module overlay.
-- Auto-close after `dialogSettings.lifetimeMs`.
+- Center the actual dialog element in the module overlay, animating it in.
+- Auto-close after `dialogSettings.lifetimeMs`, animating it out before closing.
 - If closing throws because the application is already gone, catch and ignore/log.
 
 This is intentionally aggressive for OBS safety. Future versions may support allowlisted persistent dialogs.
@@ -259,12 +294,25 @@ gluniverse-stream/
     settings.js
     stream-mode.js
     director-app.js
-    camera-controller.js
+    combat-utils.js
+    token-utils.js
+    camera/
+      controller.js
+      framing.js
+      motion.js
+    motion/
+      engine.js
+    targeting/
+      target-lines.js
+      target-line.js
     chat-overlay.js
     dialog-overlay.js
     ui-detector.js
     token-tracking.js
     socket.js
+    vendor/
+      anime.esm.min.js
+      anime.LICENSE.md
   styles/
     stream.css
   templates/
@@ -285,7 +333,9 @@ gluniverse-stream/
 - Director setting changes update the stream client automatically.
 - Chat messages visible to the stream client appear as cloned overlay cards and expire.
 - Dialog-like apps on the stream client center and auto-close.
-- Scene initial view fills the background by default without animation.
+- Scene load frames the current camera mode without animation.
 - Combat/manual/player token camera modes only use tokens visible to the stream client.
+- Spotlight moves outside the middle of the screen zoom out, cross and zoom back in; nearby moves pan.
+- In combat, targeting lines connect the active combatant to its visible targets on every allowed client.
 - Manual tracking writes scene flags only.
 - Invalid UI selector rules do not throw user-visible errors or stop stream mode.

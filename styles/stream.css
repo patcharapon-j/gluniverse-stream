@@ -64,10 +64,6 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 .gluniverse-stream-chat-root.position-top-left {
-  --stream-chat-enter-x: -56px;
-  --stream-chat-enter-y: -4px;
-  --stream-chat-exit-x: -42px;
-  --stream-chat-exit-y: -2px;
   top: 1rem;
   left: 1rem;
   flex-direction: column;
@@ -75,10 +71,6 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 .gluniverse-stream-chat-root.position-top-right {
-  --stream-chat-enter-x: 56px;
-  --stream-chat-enter-y: -4px;
-  --stream-chat-exit-x: 42px;
-  --stream-chat-exit-y: -2px;
   top: 1rem;
   right: 1rem;
   flex-direction: column;
@@ -86,10 +78,6 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 .gluniverse-stream-chat-root.position-bottom-left {
-  --stream-chat-enter-x: -56px;
-  --stream-chat-enter-y: 4px;
-  --stream-chat-exit-x: -42px;
-  --stream-chat-exit-y: 2px;
   bottom: 1rem;
   left: 1rem;
   flex-direction: column-reverse;
@@ -97,17 +85,20 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 .gluniverse-stream-chat-root.position-bottom-right {
-  --stream-chat-enter-x: 56px;
-  --stream-chat-enter-y: 4px;
-  --stream-chat-exit-x: 42px;
-  --stream-chat-exit-y: 2px;
   right: 1rem;
   bottom: 1rem;
   flex-direction: column-reverse;
   align-items: flex-end;
 }
 
+/*
+  Card motion (height, slide, scale, opacity) is driven by anime.js from
+  chat-overlay.js. Blur and shadow strength are CSS variables so they can be
+  animated without rewriting the whole filter chain.
+*/
 .gluniverse-stream-chat-card {
+  --stream-chat-blur: 0px;
+  --stream-chat-shadow: 1;
   width: 320px;
   max-width: calc(100vw - 2rem);
   overflow: hidden;
@@ -116,22 +107,14 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   isolation: isolate;
   border-radius: 8px;
   transform-origin: top left;
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
-  transition:
-    max-height 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 620ms cubic-bezier(0.34, 1.32, 0.5, 1),
-    filter 420ms cubic-bezier(0.22, 1, 0.36, 1);
   filter:
-    drop-shadow(0 0.55rem 1.1rem rgba(0, 0, 0, 0.48))
-    drop-shadow(0 0.15rem 0.35rem rgba(0, 0, 0, 0.32));
+    blur(var(--stream-chat-blur))
+    drop-shadow(0 0.55rem 1.1rem rgba(0, 0, 0, calc(0.48 * var(--stream-chat-shadow))))
+    drop-shadow(0 0.15rem 0.35rem rgba(0, 0, 0, calc(0.32 * var(--stream-chat-shadow))));
   will-change: opacity, transform, filter, max-height;
 }
 
-.gluniverse-stream-chat-card::after {
-  content: "";
+.gluniverse-stream-chat-sheen {
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -147,16 +130,6 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   );
   transform: translateX(-130%);
   opacity: 0;
-}
-
-.gluniverse-stream-chat-card:not(.gluniverse-stream-entering):not(.gluniverse-stream-exiting)::after {
-  animation: gluniverse-stream-sheen 1400ms cubic-bezier(0.22, 1, 0.36, 1) 380ms 1 forwards;
-}
-
-@keyframes gluniverse-stream-sheen {
-  0%   { transform: translateX(-130%); opacity: 0; }
-  18%  { opacity: 0.9; }
-  100% { transform: translateX(140%); opacity: 0; }
 }
 
 .gluniverse-stream-chat-card > .chat-message,
@@ -239,73 +212,37 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   transform-origin: bottom center;
 }
 
-.gluniverse-stream-chat-card.gluniverse-stream-entering {
-  max-height: 0;
-  margin-block: 0;
-  opacity: 0;
-  transform: translate3d(var(--stream-chat-enter-x, 0), var(--stream-chat-enter-y, 0), 0) scale(0.92);
-  filter:
-    blur(3px)
-    drop-shadow(0 0.1rem 0.35rem rgba(0, 0, 0, 0.18));
-}
-
-.gluniverse-stream-chat-card.gluniverse-stream-exiting {
-  max-height: 0 !important;
-  margin-block: 0 !important;
-  opacity: 0;
-  transform: translate3d(var(--stream-chat-exit-x, 0), var(--stream-chat-exit-y, 0), 0) scale(0.96);
-  transition:
-    max-height 380ms cubic-bezier(0.5, 0, 0.75, 0),
-    margin 340ms cubic-bezier(0.5, 0, 0.75, 0),
-    opacity 280ms cubic-bezier(0.5, 0, 0.75, 0),
-    transform 420ms cubic-bezier(0.6, 0, 0.85, 0.15),
-    filter 300ms ease-in;
-  filter:
-    blur(3px)
-    drop-shadow(0 0.1rem 0.3rem rgba(0, 0, 0, 0.16));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .gluniverse-stream-chat-card,
-  .gluniverse-stream-chat-card.gluniverse-stream-entering,
-  .gluniverse-stream-chat-card.gluniverse-stream-exiting {
-    transition:
-      opacity 180ms linear,
-      max-height 220ms linear !important;
-    transform: none !important;
-    filter: drop-shadow(0 0.35rem 0.8rem rgba(0, 0, 0, 0.45)) !important;
-  }
-
-  .gluniverse-stream-chat-card::after {
-    animation: none !important;
-    display: none;
-  }
-}
-
 .gluniverse-stream-dialog-root {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   pointer-events: none;
+  background: rgba(0, 0, 0, var(--stream-dialog-backdrop, 0));
 }
 
 .gluniverse-stream-dialog-root-interactive {
   pointer-events: auto;
   cursor: pointer;
-  background: rgba(0, 0, 0, 0.25);
 }
 
 .gluniverse-stream-dialog-root-interactive .gluniverse-stream-centered-dialog {
   cursor: default;
 }
 
+/*
+  Foundry positions windows with `transform`, which the overlay pins to none.
+  The enter/exit motion uses the independent `scale` and `translate` properties,
+  animated through CSS variables by dialog-overlay.js.
+*/
 .gluniverse-stream-centered-dialog {
   position: static !important;
   inset: auto !important;
   margin: 0 !important;
   pointer-events: auto;
   transform: none !important;
+  scale: var(--stream-dialog-scale, 1);
+  translate: 0 var(--stream-dialog-y, 0px);
   max-width: min(90vw, 46rem);
   max-height: 86vh;
   box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
@@ -439,6 +376,21 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.35rem 0.75rem;
+}
+
+.gluniverse-stream-director label.gluniverse-stream-color {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.gluniverse-stream-director label.gluniverse-stream-color input[type="color"] {
+  flex: 0 0 2.25rem;
+  width: 2.25rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .gluniverse-stream-director table {

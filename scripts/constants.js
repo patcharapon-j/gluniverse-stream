@@ -17,8 +17,7 @@ export const CLASSES = {
 };
 
 export const FLAGS = {
-  trackedTokenIds: "trackedTokenIds",
-  sceneCameraOverride: "sceneCameraOverride"
+  trackedTokenIds: "trackedTokenIds"
 };
 
 export const CAMERA_MODES = {
@@ -36,40 +35,30 @@ export const SCENE_VIEW_MODES = {
   fillBackground: "fillBackground"
 };
 
-export const SCENE_INITIAL_VIEWS = {
-  global: "global",
-  fillBackground: "fillBackground",
-  fitBackground: "fitBackground",
-  manual: "manual"
-};
-
 export const CHAT_POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
 export const DEFAULT_CAMERA_SETTINGS = {
   outOfCombatMode: CAMERA_MODES.scene,
   combatMode: CAMERA_MODES.combatants,
   sceneViewMode: SCENE_VIEW_MODES.fitBackground,
-  sceneInitialView: SCENE_INITIAL_VIEWS.fillBackground,
-  paddingPercent: 10,
   paddingPercentTop: 10,
   paddingPercentRight: 10,
   paddingPercentBottom: 10,
   paddingPercentLeft: 10,
-  paddingGridSpaces: 0,
   paddingGridSpacesTop: 0,
   paddingGridSpacesRight: 0,
   paddingGridSpacesBottom: 0,
   paddingGridSpacesLeft: 0,
   minZoom: 0.5,
   maxZoom: 1.5,
-  animationDurationMs: 750,
+  /** Grid squares per second. */
+  panSpeed: 12,
   excludeDefeated: true,
   includeTargets: true,
   spotlightZoom: 1,
-  spotlightPlayersOnly: false,
-  spotlightPullback: true,
-  spotlightPullbackFactor: 2,
-  spotlightPullbackDurationMs: 300
+  /** Spotlight only: how far a flight zooms out at most. 1 turns flights off. */
+  travelZoomOut: 2,
+  spotlightPlayersOnly: false
 };
 
 export const DEFAULT_CHAT_SETTINGS = {
@@ -82,6 +71,23 @@ export const DEFAULT_CHAT_SETTINGS = {
 
 export const DEFAULT_DIALOG_SETTINGS = {
   lifetimeMs: 10000
+};
+
+export const TARGET_LINE_VISIBILITY = {
+  everyone: "everyone",
+  gmAndStream: "gmAndStream",
+  streamOnly: "streamOnly"
+};
+
+export const DEFAULT_TARGETING_SETTINGS = {
+  enabled: true,
+  visibility: TARGET_LINE_VISIBILITY.everyone,
+  colorFriendlyToHostile: "#4db8ff",
+  colorHostileToFriendly: "#ff4a5c",
+  colorSameSide: "#52f5a0",
+  colorOther: "#ffd35c",
+  /** Line width and glow multiplier, 0.25 to 2. */
+  intensity: 1
 };
 
 export const DEFAULT_UI_RULES = {

@@ -1,5 +1,8 @@
 import { CLASSES, MODULE_ID } from "./constants.js";
+import { animate, prefersCalmMotion, remove } from "./motion/engine.js";
 import { getDialogSettings } from "./settings.js";
+
+const BACKDROP_ALPHA = 0.25;
 
 export class DialogOverlay {
   constructor(streamMode) {
@@ -36,6 +39,7 @@ export class DialogOverlay {
     if (kind === "image") element.classList.add(CLASSES.imagePresentation);
     else if (kind === "journal") element.classList.add(CLASSES.journalPresentation);
     this.streamMode.getDialogRoot().append(element);
+    animateIn(element);
 
     const lifetime = getLifetimeMs();
     if (lifetime > 0) {
@@ -48,10 +52,12 @@ export class DialogOverlay {
     }
   }
 
+  /** Play the exit animation, then close the application without Foundry's own close animation. */
   async closeApplication(key, app, element) {
     this.#discardEntry(key);
+    await animateOut(element);
     try {
-      if (typeof app?.close === "function") await app.close({ force: true });
+      if (typeof app?.close === "function") await app.close({ force: true, animate: false });
     } catch (error) {
       try {
         if (typeof app?.close === "function") await app.close();
@@ -90,6 +96,7 @@ export class DialogOverlay {
     root.addEventListener("click", handler);
     this.backdropHandler = handler;
     this.backdropRoot = root;
+    fadeBackdrop(root, BACKDROP_ALPHA);
   }
 
   #disableBackdropClose() {
@@ -100,6 +107,7 @@ export class DialogOverlay {
     if (this.backdropRoot && this.backdropHandler) {
       this.backdropRoot.classList.remove(CLASSES.dialogRootInteractive);
       this.backdropRoot.removeEventListener("click", this.backdropHandler);
+      fadeBackdrop(this.backdropRoot, 0);
     }
     this.backdropHandler = null;
     this.backdropRoot = null;
@@ -112,6 +120,63 @@ export class DialogOverlay {
     this.entries.clear();
     this.#detachBackdrop();
   }
+}
+
+/**
+ * Presentations rise into place with a small overshoot. The dialog's own `transform` is pinned by the
+ * overlay stylesheet, so the scale and lift go through the independent `scale`/`translate` properties
+ * via CSS variables. Inline values are cleared afterwards so Foundry's own window styling is untouched.
+ */
+function animateIn(element) {
+  remove(element);
+  const clear = () => clearMotionStyles(element);
+  if (prefersCalmMotion()) {
+    animate(element, { opacity: [0, 1], duration: 220, ease: "linear", onComplete: clear });
+    return;
+  }
+  animate(element, { opacity: [0, 1], duration: 260, ease: "outQuad" });
+  animate(element, {
+    "--stream-dialog-scale": [0.94, 1],
+    "--stream-dialog-y": ["14px", "0px"],
+    duration: 460,
+    ease: "outBack(1.4)",
+    onComplete: clear
+  });
+}
+
+function animateOut(element) {
+  if (!element?.isConnected) return Promise.resolve();
+  remove(element);
+  return new Promise(resolve => {
+    if (prefersCalmMotion()) {
+      animate(element, { opacity: [1, 0], duration: 180, ease: "linear", onComplete: resolve });
+      return;
+    }
+    animate(element, { opacity: [1, 0], duration: 240, ease: "inQuad" });
+    animate(element, {
+      "--stream-dialog-scale": [1, 0.96],
+      "--stream-dialog-y": ["0px", "8px"],
+      duration: 260,
+      ease: "inCubic",
+      onComplete: resolve
+    });
+  });
+}
+
+function fadeBackdrop(root, alpha) {
+  const current = Number.parseFloat(root.style.getPropertyValue("--stream-dialog-backdrop")) || 0;
+  remove(root);
+  if (prefersCalmMotion()) {
+    root.style.setProperty("--stream-dialog-backdrop", String(alpha));
+    return;
+  }
+  animate(root, { "--stream-dialog-backdrop": [current, alpha], duration: alpha > current ? 260 : 220, ease: "outQuad" });
+}
+
+function clearMotionStyles(element) {
+  element.style.removeProperty("opacity");
+  element.style.removeProperty("--stream-dialog-scale");
+  element.style.removeProperty("--stream-dialog-y");
 }
 
 function isStreamPresentation(app, element) {

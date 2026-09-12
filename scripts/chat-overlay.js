@@ -1,5 +1,15 @@
 import { CLASSES, MODULE_ID } from "./constants.js";
+import { animate, prefersCalmMotion, remove } from "./motion/engine.js";
 import { getChatSettings } from "./settings.js";
+
+/** Where cards slide in from and out to, per overlay corner, in pixels. */
+const CARD_OFFSETS = {
+  "top-left": { enterX: -56, enterY: -4, exitX: -42, exitY: -2 },
+  "top-right": { enterX: 56, enterY: -4, exitX: 42, exitY: -2 },
+  "bottom-left": { enterX: -56, enterY: 4, exitX: -42, exitY: 2 },
+  "bottom-right": { enterX: 56, enterY: 4, exitX: 42, exitY: 2 }
+};
+const SHEEN_DELAY_MS = 380;
 
 export class ChatOverlay {
   constructor(streamMode) {
@@ -96,30 +106,77 @@ export class ChatOverlay {
     this.applySettings();
 
     const card = document.createElement("div");
-    card.className = `gluniverse-stream-chat-card gluniverse-stream-entering ${CHAT_CONTEXT_CLASS}`;
+    card.className = `gluniverse-stream-chat-card ${CHAT_CONTEXT_CLASS}`;
     if (messageId) card.dataset.streamMessageId = messageId;
     card.append(this.buildClone(latest, message));
+    const sheen = document.createElement("span");
+    sheen.className = "gluniverse-stream-chat-sheen";
+    card.append(sheen);
     applyThemeContext(card, latest);
-    root.append(card);
     card.style.maxHeight = "0px";
+    card.style.opacity = "0";
+    root.append(card);
 
     const record = {
       element: card,
+      sheen,
       messageId,
+      phase: "entering",
       timeout: window.setTimeout(() => this.removeCard(card), Math.max(0, Number(settings.lifetimeMs) || 0))
     };
     this.cards.push(record);
     if (messageId) this.cardsByMessageId.set(messageId, record);
     this.mirrorLiveSource(record, latest, message);
 
-    window.requestAnimationFrame(() => {
-      card.classList.remove("gluniverse-stream-entering");
-      card.style.maxHeight = `${card.scrollHeight}px`;
-      this.trackCardHeight(record);
-    });
+    window.requestAnimationFrame(() => this.animateCardIn(record, settings.position));
     while (this.cards.length > Math.max(1, Number(settings.maxVisible) || 5)) {
-      this.removeCard(this.cards[0].element, true);
+      this.removeCard(this.cards[0].element);
     }
+  }
+
+  /**
+   * The card unfolds to its content height while it slides in from its corner, scales up with a slight
+   * overshoot and comes into focus; the sheen sweeps across once it has mostly arrived.
+   */
+  animateCardIn(record, position) {
+    const card = record.element;
+    if (!card?.isConnected || record.phase !== "entering") return;
+    const height = `${card.scrollHeight}px`;
+    const settle = () => {
+      if (record.phase !== "entering") return;
+      record.phase = "shown";
+      this.trackCardHeight(record);
+      this.syncCardHeight(record);
+    };
+
+    if (prefersCalmMotion()) {
+      animate(card, { opacity: [0, 1], duration: 180, ease: "linear" });
+      animate(card, { maxHeight: ["0px", height], duration: 220, ease: "linear", onComplete: settle });
+      return;
+    }
+
+    const offsets = CARD_OFFSETS[position] ?? CARD_OFFSETS["top-left"];
+    animate(card, { maxHeight: ["0px", height], duration: 520, ease: "outQuint", onComplete: settle });
+    animate(card, { opacity: [0, 1], duration: 360, ease: "outQuint" });
+    animate(card, {
+      translateX: [`${offsets.enterX}px`, "0px"],
+      translateY: [`${offsets.enterY}px`, "0px"],
+      scale: [0.92, 1],
+      duration: 620,
+      ease: "outBack(1.2)"
+    });
+    animate(card, {
+      "--stream-chat-blur": ["3px", "0px"],
+      "--stream-chat-shadow": [0.35, 1],
+      duration: 420,
+      ease: "outQuint"
+    });
+    animate(record.sheen, { translateX: ["-130%", "140%"], duration: 1400, delay: SHEEN_DELAY_MS, ease: "outQuint" });
+    animate(record.sheen, {
+      opacity: [{ from: 0, to: 0.9, duration: 250 }, { to: 0, duration: 1150 }],
+      delay: SHEEN_DELAY_MS,
+      ease: "linear"
+    });
   }
 
   refreshCardContents(record, message, source) {
@@ -131,11 +188,11 @@ export class ChatOverlay {
     const newClone = this.buildClone(latest, message);
     const oldClone = card.querySelector(".gluniverse-stream-chat-message-clone");
     if (oldClone) oldClone.replaceWith(newClone);
-    else card.append(newClone);
+    else card.prepend(newClone);
     applyThemeContext(card, latest);
-    if (!card.classList.contains("gluniverse-stream-entering") && !card.classList.contains("gluniverse-stream-exiting")) {
+    if (record.phase === "shown") {
       this.trackCardHeight(record);
-      card.style.maxHeight = `${card.scrollHeight}px`;
+      this.syncCardHeight(record);
     }
   }
 
@@ -145,30 +202,33 @@ export class ChatOverlay {
   // dice icons/avatars load late, so the content grows after we first measure it.
   // A one-shot max-height snapshot would freeze the card at its early (tiny) size
   // and clip the bundled multiroll content. A ResizeObserver on the cloned content
-  // re-measures and re-targets max-height whenever it changes, so the card always
-  // grows to fit. (Exit collapses via the .gluniverse-stream-exiting !important rule.)
+  // re-measures whenever it changes and eases the card to the new height.
   trackCardHeight(record) {
     const card = record?.element;
     if (!card?.isConnected) return;
     const content = card.querySelector(".gluniverse-stream-chat-message-clone") ?? card;
-    const sync = () => {
-      if (!card.isConnected) return;
-      if (card.classList.contains("gluniverse-stream-entering")) return;
-      if (card.classList.contains("gluniverse-stream-exiting")) return;
-      card.style.maxHeight = `${card.scrollHeight}px`;
-    };
     if (typeof ResizeObserver === "function") {
       record.resizeObserver?.disconnect();
-      const observer = new ResizeObserver(() => window.requestAnimationFrame(sync));
+      const observer = new ResizeObserver(() => window.requestAnimationFrame(() => this.syncCardHeight(record)));
       observer.observe(content);
       record.resizeObserver = observer;
       return;
     }
-    // Without ResizeObserver, release the cap once the enter settles so late content
-    // is never clipped.
-    window.setTimeout(() => {
-      if (card.isConnected && !card.classList.contains("gluniverse-stream-exiting")) card.style.maxHeight = "none";
-    }, 700);
+    // Without ResizeObserver, release the cap so late content is never clipped.
+    if (record.phase === "shown") card.style.maxHeight = "none";
+  }
+
+  syncCardHeight(record) {
+    const card = record?.element;
+    if (!card?.isConnected || record.phase !== "shown") return;
+    const height = card.scrollHeight;
+    if (record.syncedHeight === height) return;
+    record.syncedHeight = height;
+    if (prefersCalmMotion()) {
+      card.style.maxHeight = `${height}px`;
+      return;
+    }
+    animate(card, { maxHeight: `${height}px`, duration: 320, ease: "outQuint" });
   }
 
   // Mirror the live chat card for the stream card's whole life. RSReforged (and
@@ -188,8 +248,7 @@ export class ChatOverlay {
       scheduled = true;
       window.requestAnimationFrame(() => {
         scheduled = false;
-        const card = record.element;
-        if (!card?.isConnected || card.classList.contains("gluniverse-stream-exiting")) return;
+        if (!record.element?.isConnected || record.phase === "exiting") return;
         this.refreshCardContents(record, message, record.mirrorSource);
       });
     });
@@ -217,27 +276,42 @@ export class ChatOverlay {
     root.style.setProperty("--stream-chat-offset-y", `${numberOrZero(settings.offsetY)}px`);
   }
 
-  removeCard(card, immediate = false) {
+  /** Collapse the card toward its corner while it fades and blurs out, then remove it. */
+  removeCard(card) {
     const index = this.cards.findIndex(record => record.element === card);
-    if (index >= 0) {
-      const record = this.cards[index];
+    const record = index >= 0 ? this.cards[index] : null;
+    if (record) {
       window.clearTimeout(record.timeout);
       record.resizeObserver?.disconnect();
       record.mirrorObserver?.disconnect();
+      record.phase = "exiting";
       if (record.messageId && this.cardsByMessageId.get(record.messageId) === record) {
         this.cardsByMessageId.delete(record.messageId);
       }
       this.cards.splice(index, 1);
     }
     if (!card?.isConnected) return;
-    if (immediate) {
-      card.remove();
+
+    remove(card);
+    const height = `${card.getBoundingClientRect().height}px`;
+    const done = () => card.remove();
+    if (prefersCalmMotion()) {
+      animate(card, { opacity: 0, duration: 180, ease: "linear" });
+      animate(card, { maxHeight: [height, "0px"], duration: 220, ease: "linear", onComplete: done });
       return;
     }
-    card.style.maxHeight = `${card.scrollHeight}px`;
-    card.getBoundingClientRect();
-    card.classList.add("gluniverse-stream-exiting");
-    window.setTimeout(() => card.remove(), 460);
+    const offsets = CARD_OFFSETS[getChatSettings().position] ?? CARD_OFFSETS["top-left"];
+    animate(card, { maxHeight: [height, "0px"], duration: 380, ease: "inCubic" });
+    animate(card, { opacity: 0, duration: 280, ease: "inCubic" });
+    animate(card, { "--stream-chat-blur": "3px", "--stream-chat-shadow": 0.35, duration: 300, ease: "inQuad" });
+    animate(card, {
+      translateX: `${offsets.exitX}px`,
+      translateY: `${offsets.exitY}px`,
+      scale: 0.96,
+      duration: 420,
+      ease: "inQuart",
+      onComplete: done
+    });
   }
 
   clear() {
@@ -248,7 +322,11 @@ export class ChatOverlay {
     }
     this.cards = [];
     this.cardsByMessageId.clear();
-    document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => card.remove());
+    document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => {
+      remove(card);
+      remove(card.querySelector(".gluniverse-stream-chat-sheen"));
+      card.remove();
+    });
   }
 }
 

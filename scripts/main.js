@@ -1,17 +1,20 @@
 import { MODULE_ID } from "./constants.js";
-import { CameraController } from "./camera-controller.js";
+import { CameraController } from "./camera/controller.js";
 import { ChatOverlay } from "./chat-overlay.js";
 import { configureDirectorApp, addStreamSceneControl, renderDirectorApp } from "./director-app.js";
 import { DialogOverlay } from "./dialog-overlay.js";
+import { registerMotionEngine } from "./motion/engine.js";
 import { registerSettings } from "./settings.js";
 import { registerSocket } from "./socket.js";
 import { StreamMode } from "./stream-mode.js";
+import { TargetLineController } from "./targeting/target-lines.js";
 import { TokenTracking } from "./token-tracking.js";
 import { UiDetector } from "./ui-detector.js";
 
 const state = {};
 
 Hooks.once("init", () => {
+  registerMotionEngine();
   registerSettings();
   registerKeybindings();
   foundry.applications.handlebars.loadTemplates([
@@ -24,6 +27,7 @@ Hooks.once("ready", async () => {
   state.streamMode = new StreamMode();
   state.tokenTracking = new TokenTracking();
   state.camera = new CameraController(state.streamMode, state.tokenTracking);
+  state.targetLines = new TargetLineController();
   state.chatOverlay = new ChatOverlay(state.streamMode);
   state.dialogOverlay = new DialogOverlay(state.streamMode);
   state.uiDetector = new UiDetector(state.streamMode);
@@ -32,6 +36,7 @@ Hooks.once("ready", async () => {
   registerSocket(state);
   state.tokenTracking.registerHooks();
   state.camera.registerHooks();
+  state.targetLines.registerHooks();
   state.chatOverlay.registerHooks();
   state.dialogOverlay.registerHooks();
   state.uiDetector.registerHooks();

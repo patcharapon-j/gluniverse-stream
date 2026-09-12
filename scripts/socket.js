@@ -3,7 +3,7 @@ import { getSetting, isConfiguredStreamUser, isDirectorUser, sanitizeSetting } f
 
 let services = {};
 const clientStatusByUser = new Map();
-const DIRECTOR_SETTING_KEYS = new Set(["streamUserId", "autoStartStreamUserIds", "trustedDirectorUserIds", "cameraSettings", "chatSettings", "dialogSettings", "uiRules"]);
+const DIRECTOR_SETTING_KEYS = new Set(["streamUserId", "autoStartStreamUserIds", "trustedDirectorUserIds", "cameraSettings", "chatSettings", "dialogSettings", "targetingSettings", "uiRules"]);
 
 export function registerSocket(nextServices) {
   services = nextServices;
@@ -46,7 +46,7 @@ export async function requestAutoStartSet(enabled) {
 }
 
 export async function setSceneFlag(scene, flagKey, value) {
-  if (!scene || ![FLAGS.trackedTokenIds, FLAGS.sceneCameraOverride].includes(flagKey)) return;
+  if (!scene || ![FLAGS.trackedTokenIds].includes(flagKey)) return;
   if (game.user?.isGM) return scene.setFlag(MODULE_ID, flagKey, value);
   requestSceneFlagSet(scene.id, flagKey, value);
 }
@@ -82,7 +82,7 @@ async function handleSocketMessage(message) {
   if (message.type === SOCKET_TYPES.requestSceneFlagSet) {
     if (!isResponsibleGM() || !isDirectorUser(game.users?.get(message.userId))) return;
     const scene = game.scenes?.get(message.sceneId);
-    if (scene && [FLAGS.trackedTokenIds, FLAGS.sceneCameraOverride].includes(message.flagKey)) await scene.setFlag(MODULE_ID, message.flagKey, message.value);
+    if (scene && [FLAGS.trackedTokenIds].includes(message.flagKey)) await scene.setFlag(MODULE_ID, message.flagKey, message.value);
     return;
   }
 

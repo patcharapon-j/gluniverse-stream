@@ -1,3 +1,5 @@
+import { getCanvasToken } from "./token-utils.js";
+
 /**
  * Resolve the combat that should drive stream framing for the current canvas scene.
  *
@@ -21,6 +23,22 @@ export function getActiveSceneCombat() {
     ?? matches.find(combat => combat?.active)
     ?? matches.find(combat => combat?.started)
     ?? matches[0];
+}
+
+export function getActiveCombatant(combat) {
+  if (combat?.combatant) return combat.combatant;
+  const turns = combat?.turns;
+  const turn = combat?.turn;
+  if (Array.isArray(turns) && Number.isInteger(turn)) return turns[turn] ?? null;
+  return null;
+}
+
+export function getCombatantToken(combatant) {
+  const direct = combatant?.token?.object ?? combatant?.tokenObject ?? combatant?.object;
+  if (direct?.document) return direct;
+  const tokenDocument = combatant?.token;
+  if (tokenDocument?.object?.document) return tokenDocument.object;
+  return getCanvasToken(combatant?.tokenId ?? tokenDocument?.id ?? combatant?.token?.document?.id);
 }
 
 export function getCombatants(combat) {
