@@ -20,6 +20,7 @@ export class TargetLineController {
   layer = null;
   halo = null;
   core = null;
+  glint = null;
   stopListening = null;
   syncQueued = false;
   turnContext = undefined;
@@ -123,10 +124,9 @@ export class TargetLineController {
     const retracting = [...this.lines.values()].filter(line => !line.destroyed && line.sourceId !== sourceId);
     // Nothing on screen to retract: there is nothing to wait for.
     if (!retracting.length) return;
-    const retractMs = Math.max(...retracting.map(line => fullRetractMs(line.calm)));
     const handoff = { sourceId, timer: null };
     handoff.timer = createTimer({
-      duration: retractMs + TARGET_LINE_MOTION.handoffBeatMs,
+      duration: Math.max(...retracting.map(line => handoffHoldMs(line.calm))),
       onComplete: () => {
         if (this.handoff !== handoff) return;
         this.handoff = null;
@@ -145,32 +145,62 @@ export class TargetLineController {
     if (!canvas?.ready || !this.layer || this.layer.destroyed) return;
     const settings = getTargetingSettings();
     const desired = this.#desiredLines(settings);
+    const waitingSourceId = this.handoff?.sourceId ?? null;
+    if (waitingSourceId) this.#carryReticles(desired, waitingSourceId);
     for (const [key, line] of this.lines) {
       const wanted = desired.get(key);
       if (!wanted) {
         line.hide();
         continue;
       }
+      // The incoming token's lines launch together once the hand-off's retract and beat are over.
+      if (wanted.sourceId === waitingSourceId) continue;
       line.setStyle(wanted.style);
       line.show();
     }
     const calm = prefersCalmMotion();
     for (const [key, wanted] of desired) {
-      if (this.lines.has(key)) continue;
+      if (this.lines.has(key) || wanted.sourceId === waitingSourceId) continue;
       const line = new TargetLine({
         sourceId: wanted.sourceId,
         targetId: wanted.targetId,
         halo: this.halo,
         core: this.core,
+        glint: this.glint,
         style: wanted.style,
         calm,
-        onGone: gone => {
-          if (this.lines.get(key) === gone) this.lines.delete(key);
-          this.#updateListening();
-        }
+        onGone: gone => this.#forget(gone)
       });
       this.lines.set(key, line);
       line.show();
+    }
+    this.#updateListening();
+  }
+
+  /**
+   * During a hand-off, a target the incoming token shares with the outgoing one keeps its line: the body
+   * retracts into the old source while the reticle stays up, dimmed, and relaunches from the new source after
+   * the beat. Only a target that changes collapses its reticle.
+   */
+  #carryReticles(desired, sourceId) {
+    for (const [key, wanted] of desired) {
+      if (wanted.sourceId !== sourceId || this.lines.has(key)) continue;
+      for (const [heldKey, line] of this.lines) {
+        if (line.targetId !== wanted.targetId || line.destroyed || line.leaving || !line.shown) continue;
+        this.lines.delete(heldKey);
+        this.lines.set(key, line);
+        line.retarget(sourceId);
+        break;
+      }
+    }
+  }
+
+  /** Lines can change key during a hand-off, so a finished line is found by identity. */
+  #forget(gone) {
+    for (const [key, line] of this.lines) {
+      if (line !== gone) continue;
+      this.lines.delete(key);
+      break;
     }
     this.#updateListening();
   }
@@ -182,7 +212,6 @@ export class TargetLineController {
     if (!combat?.started) return desired;
     const source = getCombatantToken(getActiveCombatant(combat));
     if (!isVisibleToken(source)) return desired;
-    if (this.handoff?.sourceId === source.document.id) return desired;
     // A player's targets are their standing intent for their own creature, so they show from the first
     // frame of its turn, round after round. The GM's selection is left over from whichever NPC acted last,
     // so a GM-controlled turn only draws targets picked during that turn.
@@ -206,6 +235,8 @@ export class TargetLineController {
     if (!canvas?.ready) return;
     const scale = canvas.stage?.scale?.x ?? 1;
     const gridSize = canvas.grid?.size ?? canvas.dimensions?.size ?? 100;
+    // Hairlines are one device pixel, so they need the renderer's resolution as well as the zoom.
+    const resolution = canvas.app?.renderer?.resolution ?? globalThis.devicePixelRatio ?? 1;
     for (const line of this.lines.values()) {
       const source = getCanvasToken(line.sourceId);
       const target = getCanvasToken(line.targetId);
@@ -213,7 +244,7 @@ export class TargetLineController {
         line.destroy();
         continue;
       }
-      line.render({ source, target, scale, gridSize });
+      line.render({ source, target, scale, gridSize, resolution });
     }
   }
 
@@ -239,12 +270,15 @@ export class TargetLineController {
     blur.blendMode = PIXI.BLEND_MODES.ADD;
     halo.filters = [blur];
     const core = layer.addChild(new PIXI.Container());
+    // The light sweep adds onto the glass beneath it; each line's glint Graphics sets its own ADD blend.
+    const glint = layer.addChild(new PIXI.Container());
 
     parent.addChild(layer);
     parent.sortDirty = true;
     this.layer = layer;
     this.halo = halo;
     this.core = core;
+    this.glint = glint;
   }
 
   #teardown() {
@@ -259,6 +293,7 @@ export class TargetLineController {
     this.layer = null;
     this.halo = null;
     this.core = null;
+    this.glint = null;
   }
 }
 
@@ -276,13 +311,14 @@ function sharesPlayerController(previous, current) {
   return playerControllers(current).some(user => previousIds.has(user.id));
 }
 
-/** How long a fully drawn line takes to leave the screen, matching `TargetLine#hide`. */
-function fullRetractMs(calm) {
-  if (calm) return TARGET_LINE_MOTION.calmFadeOutMs;
-  return Math.max(
-    TARGET_LINE_MOTION.ringOutMs,
-    TARGET_LINE_MOTION.retractDelayMs + Math.max(TARGET_LINE_MOTION.retractMs, TARGET_LINE_MOTION.selfRetractMs)
-  );
+/**
+ * How long a hand-off holds the incoming token's lines: the outgoing body's full retract (matching
+ * `TargetLine#retarget` and `#hide`), then the beat.
+ */
+function handoffHoldMs(calm) {
+  const motion = TARGET_LINE_MOTION;
+  if (calm) return motion.calmFadeOutMs + motion.calmHandoffBeatMs;
+  return Math.max(motion.retractMs, motion.reticleCollapseMs) + motion.handoffBeatMs;
 }
 
 function canShowLines(settings) {

@@ -91,31 +91,34 @@ export const DEFAULT_TARGETING_SETTINGS = {
 };
 
 /**
- * Targeting line show/hide timing, in milliseconds. `TargetLine` animates with these and the controller
- * schedules turn handoffs from them, so the two cannot drift apart.
+ * Every targeting line duration, in milliseconds. `TargetLine` animates with these and the controller
+ * schedules turn hand-offs from them, so the two cannot drift apart.
  */
 export const TARGET_LINE_MOTION = {
-  /** Launch: the line reaching out from the source token at full length. */
-  launchMs: 560,
-  /** Launch: the reticle popping onto the target... */
-  ringInMs: 480,
-  /** ...starting this long before the line lands. */
-  ringInLeadMs: 160,
-  /** Retract: the reticle folding away. */
-  ringOutMs: 220,
-  /** Retract: the line drawing back into the source from full length, after `retractDelayMs`. */
-  retractDelayMs: 80,
-  retractMs: 380,
-  /** Retract: the reticle-only line a token targeting itself draws. */
-  selfRetractMs: 240,
+  /** Launch: the body reaching out from the source at full length; the head lands over its last stretch. */
+  launchMs: 600,
+  /** Launch: the reticle pops in from wide once the launch is this far along... */
+  reticlePopDelayMs: 180,
+  /** ...and settles over this long, landing with the line. */
+  reticlePopMs: 420,
+  /** A reticle whose target is gone collapses outwards over this long. */
+  reticleCollapseMs: 220,
+  /** Retract: the body drawing back into the source from full length. */
+  retractMs: 360,
+  /** Hand-off: the pause, body absent and reticle dimmed, between the retract and the relaunch. */
+  handoffBeatMs: 140,
+  /** Hand-off: a hairline ring sinks into the old source over the end of the retract... */
+  originSinkMs: 200,
+  /** ...and rises out of the new one at the start of the relaunch. */
+  originRiseMs: 240,
   /** Calm motion replaces launch and retract with plain fades. */
   calmFadeInMs: 420,
   calmFadeOutMs: 320,
-  /**
-   * Turn handoff between two tokens of the same player: the pause between the previous token's lines
-   * finishing their retract and the current token's lines launching.
-   */
-  handoffBeatMs: 150
+  calmHandoffBeatMs: 180,
+  /** Hold loops (never in calm motion): the light sweep, the glow's breathing and the reticle's turn. */
+  sweepPeriodMs: 1600,
+  pulsePeriodMs: 1400,
+  spinPeriodMs: 6000
 };
 
 export const DEFAULT_UI_RULES = {
