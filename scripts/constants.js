@@ -90,6 +90,39 @@ export const DEFAULT_TARGETING_SETTINGS = {
   intensity: 1
 };
 
+/**
+ * Every targeting line duration, in milliseconds. `TargetLine` animates with these and the controller
+ * schedules turn hand-offs from them, so the two cannot drift apart.
+ */
+export const TARGET_LINE_MOTION = {
+  /** Launch: the body reaching out from the source at full length; the head lands over its last stretch. */
+  launchMs: 600,
+  /** Launch: the reticle pops in from wide once the launch is this far along... */
+  reticlePopDelayMs: 180,
+  /** ...and settles over this long, landing with the line. */
+  reticlePopMs: 420,
+  /** A reticle whose target is gone collapses outwards over this long. */
+  reticleCollapseMs: 220,
+  /** Retract: the body drawing back into the source from full length. */
+  retractMs: 360,
+  /** Retract: the head fades out within the first 15% of it, so it never trails a withdrawing body. */
+  headFadeOutMs: 54,
+  /** Hand-off: the pause, body absent and reticle dimmed, between the retract and the relaunch. */
+  handoffBeatMs: 140,
+  /** Hand-off: a hairline ring sinks into the old source over the end of the retract... */
+  originSinkMs: 200,
+  /** ...and rises out of the new one at the start of the relaunch. */
+  originRiseMs: 240,
+  /** Calm motion replaces launch and retract with plain fades. */
+  calmFadeInMs: 420,
+  calmFadeOutMs: 320,
+  calmHandoffBeatMs: 180,
+  /** Hold loops (never in calm motion): the light sweep, the glow's breathing and the reticle's turn. */
+  sweepPeriodMs: 1600,
+  pulsePeriodMs: 1400,
+  spinPeriodMs: 6000
+};
+
 export const DEFAULT_UI_RULES = {
   elementRules: {},
   elementZIndex: {},

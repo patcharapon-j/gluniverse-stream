@@ -1,7 +1,7 @@
-import { animate, createTimeline, eases, engine, remove } from "../vendor/anime.esm.min.js";
+import { animate, createTimeline, createTimer, eases, engine, remove } from "../vendor/anime.esm.min.js";
 import { MODULE_ID } from "../constants.js";
 
-export { animate, createTimeline, eases, remove };
+export { animate, createTimeline, createTimer, eases, remove };
 
 /**
  * Canvas-bound work runs just after Foundry's token animations advance (`LOW + 1`) and just before the

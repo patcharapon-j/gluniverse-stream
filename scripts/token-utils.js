@@ -47,12 +47,50 @@ export function unionTokens(...groups) {
   });
 }
 
-function controllingUsers(token) {
-  const users = (game?.users?.contents ?? []).filter(user => user?.active);
+/**
+ * The active non-GM owners of a token's actor. When there are any, they are the token's controlling users
+ * and it is a player-controlled token; when there are none, the active GMs control it.
+ */
+export function playerControllingUsers(token) {
   const actor = token?.actor;
-  const owners = users.filter(user => !user.isGM && isActorOwner(actor, user));
+  return activeUsers().filter(user => !user.isGM && isActorOwner(actor, user));
+}
+
+/**
+ * The player or players a token's turn belongs to, for telling one player's turns from another's: the active
+ * non-GM users whose assigned character is the token's actor, or, when nobody has it assigned, its active non-GM
+ * owners. Assignment comes first because many tables give every player ownership of every character; a
+ * companion or summon nobody has assigned belongs to whoever owns it. A GM-controlled token has none.
+ *
+ * This is not the controlling-user rule: targets and colours still come from `targetsOfToken`.
+ */
+export function turnPlayers(token) {
+  const actor = token?.actor;
+  if (!actor) return [];
+  const players = activeUsers().filter(user => !user.isGM);
+  const assigned = players.filter(user => isAssignedCharacter(user, actor));
+  if (assigned.length) return assigned;
+  return players.filter(user => isActorOwner(actor, user));
+}
+
+function controllingUsers(token) {
+  const owners = playerControllingUsers(token);
   if (owners.length) return owners;
-  return users.filter(user => user.isGM);
+  return activeUsers().filter(user => user.isGM);
+}
+
+/**
+ * Whether `actor` is the user's assigned character. An unlinked token's synthetic actor is matched through its
+ * token's base actor id as well as its own.
+ */
+function isAssignedCharacter(user, actor) {
+  const characterId = user?.character?.id;
+  if (!characterId) return false;
+  return characterId === actor.id || characterId === actor.token?.actorId;
+}
+
+function activeUsers() {
+  return (game?.users?.contents ?? []).filter(user => user?.active);
 }
 
 function hasPlayerOwner(actor) {

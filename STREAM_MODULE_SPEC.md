@@ -170,7 +170,7 @@ The Director is a control surface. It should not compute stream visibility-sensi
 
 - All module animation runs on the module's own bundled anime.js engine (`scripts/vendor/anime.esm.min.js`), never Foundry's copy.
 - While a canvas exists, the engine is stepped from the canvas ticker between Foundry's token animations and the canvas render, so camera moves and canvas effects land in the same frame the canvas draws. Without a canvas the engine uses its own loop.
-- Calm motion applies on any client that prefers reduced motion (OS/browser) or has Foundry's photosensitive mode on. Chat cards, dialogs and targeting lines switch to plain fades with no scale, blur, sheen, chevrons or spin. The stream camera ignores calm motion.
+- Calm motion applies on any client that prefers reduced motion (OS/browser) or has Foundry's photosensitive mode on. Chat cards, dialogs and targeting lines switch to plain fades with no scale, blur, sheen, light sweep or spin. The stream camera ignores calm motion.
 
 ## Camera
 
@@ -232,10 +232,33 @@ Reframing triggers:
 
 - Drawn on any client allowed by `targetingSettings.visibility` (`everyone`, `gmAndStream`, `streamOnly`) when `targetingSettings.enabled` and the client's `showTargetLines` are on.
 - Only while a started combat exists on the canvas scene. Lines run from the active combatant's token to each token it targets, using the same controlling-user rule as target framing. A token targeting itself gets a reticle with no line.
+- Player-controlled turns (the combatant's actor has at least one active non-GM owner): the owners' standing targets are drawn from the start of the turn, including targets picked before the turn began, and again whenever that combatant's turn comes back in a later round.
+- GM-controlled turns (no active non-GM owner): targets any user already had when the turn began are carried over and not drawn, so a GM's selection is never reassigned from one NPC to the next, including the same NPC in a new round. A token becomes drawable again once it is targeted during the turn (a `targetToken` event). The first turn seen after load carries nothing over. Foundry targets are only read, never changed.
 - Each client uses its own visibility: a line is drawn only when both tokens are visible and not hidden on that client.
 - Color by disposition: friendly to hostile, hostile to friendly, same non-neutral side, and anything involving a neutral token. Secret disposition counts as neutral.
-- Rendered as a PIXI container in `canvas.interface` at zIndex 1050, above token UI and rulers and below scrolling combat text, with one shared blur filter for the halos. Endpoints follow the tokens' animated positions every canvas frame, starting at the source token's edge and ending at a reticle around the target.
-- Lines draw out from the source and pop the reticle on appear, stream chevrons toward the target while shown, and retract into the source on removal. Re-adding a line that is retracting reverses it. Turn changes retract the old combatant's lines while the new combatant's lines draw in. A canvas teardown clears lines instantly.
+- Rendered as a PIXI container in `canvas.interface` at zIndex 1050, above token UI and rulers and below scrolling combat text. It holds three containers: `halo` (one shared blur filter, additive), `core` (normal blending, so the dark rim shows) and `glint` (additive, for the light sweep). Each line owns one Graphics in each and redraws them every canvas frame from the tokens' animated positions. The path buffer and drawing scratch are reused from frame to frame.
+- Look ("Etched Bow"). Units: `u` is `max(0.5, intensity) / zoom^0.65` world units, and a hairline `hl` is one device pixel, `1 / (zoom × renderer resolution)`. Along the arc, in order: a blurred halo `14u` in the relationship colour, an etched rim `5u + 2hl` in INK (`#080a0e`) at 0.5, a tinted band `5u` at 0.3, a core `2u` at 0.85, and a bright hairline `hl` (the relationship colour mixed 65% toward white). The origin is a bright dot inside an INK ring. The head is a filled wedge 0.26 squares long and 0.22 wide that fades in over the last 18% of the reach and out within the first 15% of a retract (`headFadeOutMs`). The reticle sits at 1.12 of the target's half-size: a halo ring, an INK rim, a hairline ring and four quadrant marks. INK and white are the only fixed colours; everything else comes from the four relationship colours.
+- Motion. A line launches in 600 ms (reach outCubic) while the reticle pops in from 1.6× its radius (outBack, starting 180 ms in). It retracts in 360 ms (inCubic), and a reticle whose target is gone collapses outwards in 220 ms. While a line holds, a single additive light sweep 0.6 squares long runs from source to target every 1.6 s, the glow breathes every 1.4 s, and the quadrant marks turn once every 6 s. Re-adding a line that is retracting reverses it. A canvas teardown clears lines instantly. Every duration is `TARGET_LINE_MOTION` in `scripts/constants.js`.
+- Calm motion has no sweep, breathing, turning, spark or origin cue. Lines fade in over 420 ms and out over 320 ms.
+- Turn changes normally retract the old combatant's lines while the new combatant's lines draw in, overlapping.
+- Hand-off: when the turn passes between two different tokens of the same player and lines are still on screen, the change is sequential and keeps the target.
+  - A target both tokens share keeps its line. The body retracts into the old source (`retractMs`, with the head gone within its first 15%), and the reticle dims to 45% with its loops frozen. After `handoffBeatMs`, the same line relaunches from the new source (`launchMs`), and the reticle brightens back to full.
+  - A target that changes collapses as usual. A target new to this turn launches when the beat ends.
+  - Whatever happens to the targets, one hairline ring sinks into the old token over the end of the retract (`originSinkMs`), and one rises out of the new token as its lines launch (`originRiseMs`). That is one ring per token per hand-off, not one per target, and never under calm motion.
+  - Under calm motion the body fades out (`calmFadeOutMs`), waits `calmHandoffBeatMs` and fades back in, and the reticle still holds at 45%.
+  - "Same player" compares the two tokens' turn players: the active non-GM users whose assigned character is the token's actor, or, when nobody has it assigned, its active non-GM owners. Two turns belong to the same player when those sets overlap.
+    - Assignment comes first, so tables where every player owns every character still tell players apart.
+    - A companion nobody has assigned belongs to its owners, so a player's character followed by their companion hands off. A mount several players own hands off from any of their characters.
+    - GM-controlled tokens have no turn players, so NPC turns change over at once.
+    - Which targets a line shows still follows the controlling-user rule above.
+  - A turn change to a different acting token, or a canvas teardown, cancels a pending hand-off. A re-sort or insert that moves the turn index while the same token is still acting does not.
+- Geometry lives in `scripts/targeting/target-geometry.js`, a pure module. At range the line is the same arc as before: a quadratic Bézier between the token centres, bowed left of travel by 0.16 of their distance (capped at 2.5 grid squares), cut to start 0.92 of the source's half-size along it and to stop at the reticle.
+- Melee arch. Closeness `k` is `1 − edgeGap / 1.2 squares`, clamped to 0–1, where `edgeGap` is the centre distance minus 0.92 of the source's half-size and 1.12 of the target's.
+  - Shoulder rule: the endpoints slide round the token edges towards the bow side by `55° × k`.
+  - Hop: the control point sits off the shoulder-to-shoulder chord by `max(min(0.16 × chord, 2.5 squares), 0.9 squares × k)`, a mid-curve lift of at least `0.45 squares × k`.
+  - The arch fully replaces the range arc by `k = 0.5` (an edge gap of 0.6 squares), and the two curves' control points blend in between, so the line never jumps as tokens close.
+  - Results: side-by-side 1×1 tokens get about 1.0 square of body, diagonal 0.9, a 2×2 next to a 1×1 1.1. The head arrives within 30° of straight into the reticle, and the body never cuts inside it.
+  - The bow stays left of travel, so two tokens on either side of one target arch on opposite sides.
 
 ## Token Tracking
 
@@ -305,6 +328,7 @@ gluniverse-stream/
     targeting/
       target-lines.js
       target-line.js
+      target-geometry.js
     chat-overlay.js
     dialog-overlay.js
     ui-detector.js

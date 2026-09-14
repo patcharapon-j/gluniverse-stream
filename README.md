@@ -10,7 +10,7 @@ GLUniverse Stream is a Foundry VTT v13/v14 module for running a clean OBS/browse
 - Camera modes for manual/free camera, full scene background, tracked tokens, visible party tokens, visible combatants, the active turn, and a spotlight on the active token.
 - Spotlight flights: when the spotlight has somewhere to go, the camera zooms out, crosses the map and zooms back in as one smooth arc.
 - Blended camera motion: a new framing part-way through a move redirects the current move instead of restarting it.
-- Final Fantasy-style targeting lines in combat: a glowing arc with flowing chevrons from the active combatant to each token it targets, ending in a spinning reticle.
+- Final Fantasy-style targeting lines in combat: an etched glass arc from the active combatant to each token it targets, landing an arrowhead on a turning reticle.
 - Target-aware framing that widens the shot to hold both an attacker and the tokens it is targeting.
 - The camera never blocks or interferes with token movement: it only reacts to committed updates, and it stays off the canvas while a drag or ruler is in progress.
 - Stream-client-side camera visibility checks so fog/hidden-token visibility stays under Foundry's normal client rules.
@@ -55,7 +55,12 @@ https://github.com/patcharapon-j/gluniverse-stream/releases/latest/download/modu
 
 ## Targeting Lines
 
-During combat, a glowing line is drawn from the combatant whose turn it is to every token it targets. The line draws out from the attacker, a reticle pops onto the target, chevrons flow toward the target while it holds, and the line retracts when the target is cleared or the turn passes.
+During combat, an etched glass arc is drawn from the combatant whose turn it is to every token it targets. It has a dark rim that keeps it readable over busy maps, a band in the relationship color and a one-pixel bright hairline. The line draws out from the attacker and lands an arrowhead on a hairline reticle around the target. While it holds, a single light sweep runs down the line and the reticle's four marks slowly turn. The line retracts when the target is cleared or the turn passes.
+
+- **Player turns** show that player's current targets as soon as the turn starts, including targets picked earlier and on the character's next turn.
+- **GM turns** don't reuse whatever the GM had targeted for the previous NPC. Lines appear once the GM targets something during that turn.
+- **Back-to-back turns for one player**, such as a character and then its companion, hand the line over. It retracts into the first token while the target's reticle stays up, dimmed, then launches again from the next token after a short pause. A player's turns are those of their assigned character, plus any token they own that nobody has assigned. That way players who all own each other's characters are still told apart, and a mount shared by several players counts as each of theirs.
+- **Melee** lines stay visible. Between adjacent tokens the line arches from the attacker's shoulder to the target's, so there is always a body and an arrowhead.
 
 - **Colors** follow disposition: friendly to hostile, hostile to friendly, same side, and neutral/other each have their own color. Secret dispositions count as neutral, so a line never reveals a hidden allegiance.
 - **Visible to** chooses who sees lines: everyone, GMs and the stream, or the stream only. Each client only draws lines between tokens it can see.
