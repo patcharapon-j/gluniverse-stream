@@ -1,16 +1,12 @@
+import { TARGET_LINE_MOTION } from "../constants.js";
 import { animate, remove } from "../motion/engine.js";
+import { lineGeometry, ringRadius, sampleAt, slicePath } from "./target-geometry.js";
 
-const SAMPLES = 40;
-/** How far the arc bows out sideways, as a share of its length (capped in grid squares). */
-const BEND_SHARE = 0.16;
-const MAX_BEND_SQUARES = 2.5;
 const CHEVRON_SPACING_SQUARES = 0.85;
 const CHEVRON_SIZE_SQUARES = 0.2;
 const FLOW_PERIOD_MS = 900;
 const SPIN_PERIOD_MS = 6000;
 const PULSE_PERIOD_MS = 1400;
-const DRAW_MS = 560;
-const RETRACT_MS = 380;
 const RING_ARCS = 3;
 const RING_ARC_SPAN = Math.PI * 0.38;
 const TAU = Math.PI * 2;
@@ -61,13 +57,18 @@ export class TargetLine {
       state.reach = 1;
       state.ring = 1;
       if (firstShow) state.opacity = 0;
-      animate(state, { opacity: 1, duration: 420, ease: "outQuad" });
+      animate(state, { opacity: 1, duration: TARGET_LINE_MOTION.calmFadeInMs, ease: "outQuad" });
       return;
     }
     state.opacity = 1;
-    const reachMs = this.isSelfTarget ? 0 : DRAW_MS * (1 - state.reach);
+    const reachMs = this.isSelfTarget ? 0 : TARGET_LINE_MOTION.launchMs * (1 - state.reach);
     animate(state, { reach: 1, duration: Math.max(1, reachMs), ease: "outCubic" });
-    animate(state, { ring: 1, duration: 480, delay: Math.max(0, reachMs - 160), ease: "outBack(2.2)" });
+    animate(state, {
+      ring: 1,
+      duration: TARGET_LINE_MOTION.ringInMs,
+      delay: Math.max(0, reachMs - TARGET_LINE_MOTION.ringInLeadMs),
+      ease: "outBack(2.2)"
+    });
   }
 
   /** Retract into the source (or fade, in calm mode), then remove the line. */
@@ -79,14 +80,17 @@ export class TargetLine {
     };
     const state = this.state;
     if (this.calm) {
-      animate(state, { opacity: 0, duration: 320, ease: "inQuad", onComplete: finish });
+      animate(state, { opacity: 0, duration: TARGET_LINE_MOTION.calmFadeOutMs, ease: "inQuad", onComplete: finish });
       return;
     }
-    animate(state, { ring: 0, duration: 220, ease: "inCubic" });
+    animate(state, { ring: 0, duration: TARGET_LINE_MOTION.ringOutMs, ease: "inCubic" });
+    const retractMs = this.isSelfTarget
+      ? TARGET_LINE_MOTION.selfRetractMs
+      : Math.max(1, TARGET_LINE_MOTION.retractMs * state.reach);
     animate(state, {
       reach: 0,
-      duration: this.isSelfTarget ? 240 : Math.max(1, RETRACT_MS * state.reach),
-      delay: 80,
+      duration: retractMs,
+      delay: TARGET_LINE_MOTION.retractDelayMs,
       ease: "inCubic",
       onComplete: finish
     });
@@ -119,14 +123,19 @@ export class TargetLine {
     halo.alpha = opacity;
     core.alpha = opacity;
 
-    const from = source.center;
     const to = target.center;
-    const ringRadius = (Math.max(target.w, target.h) / 2) * 1.12;
+    const targetSize = Math.max(target.w, target.h);
+    const radius = ringRadius(targetSize);
 
     if (!this.isSelfTarget) {
-      const path = buildArc(from, to, gridSize);
-      const startArc = Math.min(path.length, (Math.max(source.w, source.h) / 2) * 0.92);
-      const endArc = Math.max(startArc, path.length - ringRadius);
+      // Up close the arc lifts into a hop so a melee line keeps a visible body; see target-geometry.js.
+      const { path, startArc, endArc } = lineGeometry({
+        from: source.center,
+        to,
+        sourceSize: Math.max(source.w, source.h),
+        targetSize,
+        gridSize
+      });
       const visibleEnd = startArc + ((endArc - startArc) * clamp01(state.reach));
       if (visibleEnd - startArc > 1) {
         const points = slicePath(path, startArc, visibleEnd);
@@ -142,7 +151,7 @@ export class TargetLine {
       }
     }
 
-    if (state.ring > 0.001) this.#drawReticle(halo, core, to, ringRadius, unit, color, bright, glow);
+    if (state.ring > 0.001) this.#drawReticle(halo, core, to, radius, unit, color, bright, glow);
   }
 
   #startLoops() {
@@ -197,60 +206,6 @@ export class TargetLine {
       core.lineTo(center.x + (cos * r * 0.94), center.y + (sin * r * 0.94));
     }
   }
-}
-
-/** A quadratic Bézier from `from` to `to`, bowed to the left of travel, sampled by arc length. */
-function buildArc(from, to, gridSize) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const bend = Math.min(length * BEND_SHARE, MAX_BEND_SQUARES * gridSize);
-  const control = {
-    x: ((from.x + to.x) / 2) - ((dy / length) * bend),
-    y: ((from.y + to.y) / 2) + ((dx / length) * bend)
-  };
-  const points = [];
-  const arcs = [];
-  let total = 0;
-  for (let i = 0; i <= SAMPLES; i++) {
-    const t = i / SAMPLES;
-    const u = 1 - t;
-    const point = {
-      x: (u * u * from.x) + (2 * u * t * control.x) + (t * t * to.x),
-      y: (u * u * from.y) + (2 * u * t * control.y) + (t * t * to.y)
-    };
-    if (i > 0) total += Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y);
-    points.push(point);
-    arcs.push(total);
-  }
-  return { points, arcs, length: total };
-}
-
-function sampleAt(path, arc) {
-  const { points, arcs } = path;
-  const clamped = Math.max(0, Math.min(path.length, arc));
-  let index = 1;
-  while (index < arcs.length - 1 && arcs[index] < clamped) index++;
-  const a = points[index - 1];
-  const b = points[index];
-  const segment = (arcs[index] - arcs[index - 1]) || 1;
-  const t = (clamped - arcs[index - 1]) / segment;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    point: { x: a.x + (dx * t), y: a.y + (dy * t) },
-    tangent: { x: dx / length, y: dy / length }
-  };
-}
-
-function slicePath(path, startArc, endArc) {
-  const points = [sampleAt(path, startArc).point];
-  for (let i = 0; i < path.points.length; i++) {
-    if (path.arcs[i] > startArc && path.arcs[i] < endArc) points.push(path.points[i]);
-  }
-  points.push(sampleAt(path, endArc).point);
-  return points;
 }
 
 function strokePath(graphics, points, width, color, alpha) {

@@ -57,6 +57,11 @@ https://github.com/patcharapon-j/gluniverse-stream/releases/latest/download/modu
 
 During combat, a glowing line is drawn from the combatant whose turn it is to every token it targets. The line draws out from the attacker, a reticle pops onto the target, chevrons flow toward the target while it holds, and the line retracts when the target is cleared or the turn passes.
 
+- **Player turns** show that player's current targets as soon as the turn starts, including targets picked earlier and on the character's next turn.
+- **GM turns** don't reuse whatever the GM had targeted for the previous NPC. Lines appear once the GM targets something during that turn.
+- **Back-to-back turns for one player**, such as a character and then its companion, change over in sequence. The first token's lines retract fully, there is a short pause, and then the next token's lines launch. A token shared by several players counts as the same player for any of them.
+- **Melee** lines stay visible. Between adjacent tokens the line bows out into a short hop, so there is always a body and a reticle rather than a bare ring.
+
 - **Colors** follow disposition: friendly to hostile, hostile to friendly, same side, and neutral/other each have their own color. Secret dispositions count as neutral, so a line never reveals a hidden allegiance.
 - **Visible to** chooses who sees lines: everyone, GMs and the stream, or the stream only. Each client only draws lines between tokens it can see.
 - **Intensity** scales the line width and glow.

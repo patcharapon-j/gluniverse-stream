@@ -232,10 +232,16 @@ Reframing triggers:
 
 - Drawn on any client allowed by `targetingSettings.visibility` (`everyone`, `gmAndStream`, `streamOnly`) when `targetingSettings.enabled` and the client's `showTargetLines` are on.
 - Only while a started combat exists on the canvas scene. Lines run from the active combatant's token to each token it targets, using the same controlling-user rule as target framing. A token targeting itself gets a reticle with no line.
+- Player-controlled turns (the combatant's actor has at least one active non-GM owner): the owners' standing targets are drawn from the start of the turn, including targets picked before the turn began, and again whenever that combatant's turn comes back in a later round.
+- GM-controlled turns (no active non-GM owner): targets any user already had when the turn began are carried over and not drawn, so a GM's selection is never reassigned from one NPC to the next, including the same NPC in a new round. A token becomes drawable again once it is targeted during the turn (a `targetToken` event). The first turn seen after load carries nothing over. Foundry targets are only read, never changed.
 - Each client uses its own visibility: a line is drawn only when both tokens are visible and not hidden on that client.
 - Color by disposition: friendly to hostile, hostile to friendly, same non-neutral side, and anything involving a neutral token. Secret disposition counts as neutral.
 - Rendered as a PIXI container in `canvas.interface` at zIndex 1050, above token UI and rulers and below scrolling combat text, with one shared blur filter for the halos. Endpoints follow the tokens' animated positions every canvas frame, starting at the source token's edge and ending at a reticle around the target.
-- Lines draw out from the source and pop the reticle on appear, stream chevrons toward the target while shown, and retract into the source on removal. Re-adding a line that is retracting reverses it. Turn changes retract the old combatant's lines while the new combatant's lines draw in. A canvas teardown clears lines instantly.
+- Lines draw out from the source and pop the reticle on appear, stream chevrons toward the target while shown, and retract into the source on removal. Re-adding a line that is retracting reverses it. A canvas teardown clears lines instantly. Show and hide durations are `TARGET_LINE_MOTION` in `scripts/constants.js`.
+- Turn changes normally retract the old combatant's lines while the new combatant's lines draw in, overlapping.
+- Handoff: when the turn passes between two different tokens of the same player and lines are still on screen, the change is sequential. The old lines retract completely (`retractDelayMs + retractMs`, or `calmFadeOutMs` under calm motion, where the lines fade), `handoffBeatMs` passes, and only then do the new token's lines launch, even onto unchanged targets. "Same player" means the two tokens' controlling players overlap: at least one active non-GM owner in common. Overlap rather than equality, so a token several players share (a mount, a party companion) hands off from either player's own character. GM-controlled tokens never count as the same player, so NPC turns change over at once. A further turn change or a canvas teardown cancels a pending handoff.
+- Geometry lives in `scripts/targeting/target-geometry.js`, a pure module. The line is a quadratic arc between token centres, bowed sideways by 0.16 of its chord, capped at 2.5 grid squares. Its body starts 0.92 of the source's half-size along the arc and stops at the reticle, 1.12 of the target's half-size.
+- Melee hop: when that arc would leave less than `MIN_SPAN_SQUARES` (0.7 grid squares: half a square of body plus room for a head) between the start trim and the reticle, the bow grows to the smallest value that leaves exactly that much. Side-by-side, diagonal and mixed-size adjacent tokens therefore always show a body. The hop meets the flat rule where the flat rule becomes long enough, so the arc never jumps as tokens close, and longer lines are unchanged.
 
 ## Token Tracking
 
@@ -305,6 +311,7 @@ gluniverse-stream/
     targeting/
       target-lines.js
       target-line.js
+      target-geometry.js
     chat-overlay.js
     dialog-overlay.js
     ui-detector.js

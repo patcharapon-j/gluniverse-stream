@@ -1,8 +1,8 @@
 import { getActiveCombatant, getActiveSceneCombat, getCombatantToken } from "../combat-utils.js";
-import { MODULE_ID, TARGET_LINE_VISIBILITY } from "../constants.js";
-import { onCanvasFrame, prefersCalmMotion } from "../motion/engine.js";
+import { MODULE_ID, TARGET_LINE_MOTION, TARGET_LINE_VISIBILITY } from "../constants.js";
+import { createTimer, onCanvasFrame, prefersCalmMotion } from "../motion/engine.js";
 import { getSetting, getTargetingSettings, isConfiguredStreamUser } from "../settings.js";
-import { getCanvasToken, isVisibleToken, targetsOfToken } from "../token-utils.js";
+import { getCanvasToken, isVisibleToken, playerControllers, targetsOfToken } from "../token-utils.js";
 import { TargetLine } from "./target-line.js";
 
 /** Above rulers and cursors, below the scrolling combat text. */
@@ -23,7 +23,10 @@ export class TargetLineController {
   stopListening = null;
   syncQueued = false;
   turnContext = undefined;
+  turnSourceId = null;
   carriedTargets = new Map();
+  /** While set, the lines of `sourceId` wait for the previous turn's lines to retract. */
+  handoff = null;
 
   registerHooks() {
     Hooks.on("canvasReady", () => {
@@ -82,14 +85,19 @@ export class TargetLineController {
 
   #updateTurnContext() {
     const combat = getActiveSceneCombat();
+    const combatant = combat?.started ? getActiveCombatant(combat) : null;
     const context = combat?.started
-      ? JSON.stringify([canvas?.scene?.id, combat.id, combat.round, combat.turn, getActiveCombatant(combat)?.id])
+      ? JSON.stringify([canvas?.scene?.id, combat.id, combat.round, combat.turn, combatant?.id])
       : null;
     if (context === this.turnContext) return;
+    const firstContext = this.turnContext === undefined;
+    const previousSourceId = this.turnSourceId;
+    const source = getCombatantToken(combatant);
     this.carriedTargets.clear();
-    // Foundry targets belong to users, not creatures. Do not reassign an unchanged selection
-    // to the next combatant, including another NPC controlled by the same GM.
-    if (this.turnContext !== undefined) {
+    // Foundry targets belong to users, not creatures. Record every selection standing at the turn change;
+    // on a GM-controlled turn these are not reassigned to the next creature, including another NPC the same
+    // GM runs (see #desiredLines).
+    if (!firstContext) {
       for (const user of game.users?.contents ?? []) {
         this.carriedTargets.set(user.id, new Set(
           [...(user.targets ?? [])].map(target => target.document.id)
@@ -97,6 +105,40 @@ export class TargetLineController {
       }
     }
     this.turnContext = context;
+    this.turnSourceId = source?.document?.id ?? null;
+    this.#cancelHandoff();
+    if (!firstContext) this.#beginHandoff(getCanvasToken(previousSourceId), source);
+  }
+
+  /**
+   * When one player's turn passes to another token of theirs (a character, then its companion), their
+   * lines would otherwise leap straight from one token to the next. Instead the previous token's lines
+   * retract completely, a beat passes, and only then do the current token's lines launch, even onto the
+   * same targets. Turns between different players, or run by the GM, change over at once.
+   */
+  #beginHandoff(previous, current) {
+    const sourceId = current?.document?.id;
+    if (!previous || !sourceId || previous.document?.id === sourceId) return;
+    if (!sharesPlayerController(previous, current)) return;
+    const retracting = [...this.lines.values()].filter(line => !line.destroyed && line.sourceId !== sourceId);
+    // Nothing on screen to retract: there is nothing to wait for.
+    if (!retracting.length) return;
+    const retractMs = Math.max(...retracting.map(line => fullRetractMs(line.calm)));
+    const handoff = { sourceId, timer: null };
+    handoff.timer = createTimer({
+      duration: retractMs + TARGET_LINE_MOTION.handoffBeatMs,
+      onComplete: () => {
+        if (this.handoff !== handoff) return;
+        this.handoff = null;
+        this.refresh();
+      }
+    });
+    this.handoff = handoff;
+  }
+
+  #cancelHandoff() {
+    this.handoff?.timer?.cancel?.();
+    this.handoff = null;
   }
 
   #sync() {
@@ -140,8 +182,14 @@ export class TargetLineController {
     if (!combat?.started) return desired;
     const source = getCombatantToken(getActiveCombatant(combat));
     if (!isVisibleToken(source)) return desired;
-    for (const target of targetsOfToken(source, (user, target) =>
-      !this.carriedTargets.get(user.id)?.has(target.document.id))) {
+    if (this.handoff?.sourceId === source.document.id) return desired;
+    // A player's targets are their standing intent for their own creature, so they show from the first
+    // frame of its turn, round after round. The GM's selection is left over from whichever NPC acted last,
+    // so a GM-controlled turn only draws targets picked during that turn.
+    const includeTarget = playerControllers(source).length
+      ? undefined
+      : (user, target) => !this.carriedTargets.get(user.id)?.has(target.document.id);
+    for (const target of targetsOfToken(source, includeTarget)) {
       if (!isVisibleToken(target)) continue;
       const sourceId = source.document.id;
       const targetId = target.document.id;
@@ -200,6 +248,7 @@ export class TargetLineController {
   }
 
   #teardown() {
+    this.#cancelHandoff();
     for (const line of [...this.lines.values()]) line.destroy();
     this.lines.clear();
     this.#updateListening();
@@ -211,6 +260,29 @@ export class TargetLineController {
     this.halo = null;
     this.core = null;
   }
+}
+
+/**
+ * Whether two turns belong to the same player, for a turn handoff: the tokens' controlling players (the
+ * active non-GM owners, the same rule `targetsOfToken` uses) have at least one person in common.
+ *
+ * Overlap rather than equality, because a token several players share, such as a mount or a party
+ * companion, could be acted for by either of them, so its turn after either one's own character reads as
+ * the same hands moving on. Offline owners never count. GM-controlled tokens never share: the GM runs every
+ * NPC, and treating that as one player would put a pause between every pair of NPC turns.
+ */
+function sharesPlayerController(previous, current) {
+  const previousIds = new Set(playerControllers(previous).map(user => user.id));
+  return playerControllers(current).some(user => previousIds.has(user.id));
+}
+
+/** How long a fully drawn line takes to leave the screen, matching `TargetLine#hide`. */
+function fullRetractMs(calm) {
+  if (calm) return TARGET_LINE_MOTION.calmFadeOutMs;
+  return Math.max(
+    TARGET_LINE_MOTION.ringOutMs,
+    TARGET_LINE_MOTION.retractDelayMs + Math.max(TARGET_LINE_MOTION.retractMs, TARGET_LINE_MOTION.selfRetractMs)
+  );
 }
 
 function canShowLines(settings) {

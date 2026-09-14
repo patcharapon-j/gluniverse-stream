@@ -90,6 +90,34 @@ export const DEFAULT_TARGETING_SETTINGS = {
   intensity: 1
 };
 
+/**
+ * Targeting line show/hide timing, in milliseconds. `TargetLine` animates with these and the controller
+ * schedules turn handoffs from them, so the two cannot drift apart.
+ */
+export const TARGET_LINE_MOTION = {
+  /** Launch: the line reaching out from the source token at full length. */
+  launchMs: 560,
+  /** Launch: the reticle popping onto the target... */
+  ringInMs: 480,
+  /** ...starting this long before the line lands. */
+  ringInLeadMs: 160,
+  /** Retract: the reticle folding away. */
+  ringOutMs: 220,
+  /** Retract: the line drawing back into the source from full length, after `retractDelayMs`. */
+  retractDelayMs: 80,
+  retractMs: 380,
+  /** Retract: the reticle-only line a token targeting itself draws. */
+  selfRetractMs: 240,
+  /** Calm motion replaces launch and retract with plain fades. */
+  calmFadeInMs: 420,
+  calmFadeOutMs: 320,
+  /**
+   * Turn handoff between two tokens of the same player: the pause between the previous token's lines
+   * finishing their retract and the current token's lines launching.
+   */
+  handoffBeatMs: 150
+};
+
 export const DEFAULT_UI_RULES = {
   elementRules: {},
   elementZIndex: {},

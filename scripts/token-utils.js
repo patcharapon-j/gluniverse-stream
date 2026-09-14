@@ -47,12 +47,23 @@ export function unionTokens(...groups) {
   });
 }
 
-function controllingUsers(token) {
-  const users = (game?.users?.contents ?? []).filter(user => user?.active);
+/**
+ * The active non-GM owners of a token's actor. When there are any, they are the token's controlling users
+ * and it is a player-controlled token; when there are none, the active GMs control it.
+ */
+export function playerControllers(token) {
   const actor = token?.actor;
-  const owners = users.filter(user => !user.isGM && isActorOwner(actor, user));
+  return activeUsers().filter(user => !user.isGM && isActorOwner(actor, user));
+}
+
+function controllingUsers(token) {
+  const owners = playerControllers(token);
   if (owners.length) return owners;
-  return users.filter(user => user.isGM);
+  return activeUsers().filter(user => user.isGM);
+}
+
+function activeUsers() {
+  return (game?.users?.contents ?? []).filter(user => user?.active);
 }
 
 function hasPlayerOwner(actor) {
