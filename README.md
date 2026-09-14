@@ -59,7 +59,7 @@ During combat, an etched glass arc is drawn from the combatant whose turn it is 
 
 - **Player turns** show that player's current targets as soon as the turn starts, including targets picked earlier and on the character's next turn.
 - **GM turns** don't reuse whatever the GM had targeted for the previous NPC. Lines appear once the GM targets something during that turn.
-- **Back-to-back turns for one player**, such as a character and then its companion, hand the line over. It retracts into the first token while the target's reticle stays up, dimmed, then launches again from the next token after a short pause. A token shared by several players counts as the same player for any of them.
+- **Back-to-back turns for one player**, such as a character and then its companion, hand the line over. It retracts into the first token while the target's reticle stays up, dimmed, then launches again from the next token after a short pause. A player's turns are those of their assigned character, plus any token they own that nobody has assigned. That way players who all own each other's characters are still told apart, and a mount shared by several players counts as each of theirs.
 - **Melee** lines stay visible. Between adjacent tokens the line arches from the attacker's shoulder to the target's, so there is always a body and an arrowhead.
 
 - **Colors** follow disposition: friendly to hostile, hostile to friendly, same side, and neutral/other each have their own color. Secret dispositions count as neutral, so a line never reveals a hidden allegiance.

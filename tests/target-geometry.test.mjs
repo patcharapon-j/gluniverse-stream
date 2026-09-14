@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   CLOSE_RANGE_SQUARES,
+  HEAD_LENGTH_SQUARES,
   createPath,
   lineGeometry,
   pointAt,
@@ -10,8 +11,6 @@ import {
 } from "../scripts/targeting/target-geometry.js";
 
 const GRID = 100;
-/** The Etched Bow head is a wedge this long (target-line.js); the body has to leave room for it. */
-const HEAD_SQUARES = 0.26;
 
 /** A token of `squares` × `squares` grid squares whose top-left corner is at grid cell (col, row). */
 function token(col, row, squares = 1, grid = GRID) {
@@ -33,7 +32,7 @@ function pointsOf(path) {
   return Array.from(path.xs, (x, i) => ({ x, y: path.ys[i] }));
 }
 
-/** Today's visible arc, exactly as target-line.js drew it before the Etched Bow: 81 points along the trim. */
+/** The visible arc exactly as target-line.js drew it before the Etched Bow (the range arc): 81 points along the trim. */
 function legacyVisible(source, target, grid = GRID) {
   const from = source.center;
   const to = target.center;
@@ -108,20 +107,20 @@ for (const [name, source, target] of MELEE_CASES) {
     const path = geometryBetween(source, target);
     const ring = ringRadius(target.size);
     assert.ok(path.length >= 0.8 * GRID, `body ${(path.length / GRID).toFixed(2)} sq is not clearly visible`);
-    assert.ok(path.length - (HEAD_SQUARES * GRID) >= 0.5 * GRID, "half a square of body shows behind the head");
+    assert.ok(path.length - (HEAD_LENGTH_SQUARES * GRID) >= 0.5 * GRID, "half a square of body shows behind the head");
 
     const tip = pointAt(path, path.length);
     assert.ok(Math.abs(distance(tip, target.center) - ring) < 0.5, "the tip lands on the reticle");
     const inward = { x: target.center.x - tip.x, y: target.center.y - tip.y };
     const landing = Math.acos(((tip.tx * inward.x) + (tip.ty * inward.y)) / Math.hypot(inward.x, inward.y));
-    assert.ok(landing <= Math.PI / 4, `head skims the reticle at ${(landing * 180 / Math.PI).toFixed(0)}°`);
+    assert.ok(landing <= Math.PI / 6, `head skims the reticle at ${(landing * 180 / Math.PI).toFixed(0)}°`);
     pointsOf(path).slice(0, -1).forEach((point, i) => {
       assert.ok(distance(point, target.center) >= ring - 0.5, `sample ${i} cuts inside the reticle`);
     });
-    const base = pointAt(path, path.length - (HEAD_SQUARES * GRID));
+    const base = pointAt(path, path.length - (HEAD_LENGTH_SQUARES * GRID));
     assert.ok(distance(base, target.center) >= ring + (0.2 * GRID), "the head's base clears the reticle");
 
-    // The arch rises on today's side: left of travel, (−dy, dx) in screen coordinates.
+    // The arch rises on the side the range arc has always bowed to: left of travel, (−dy, dx) in screen coordinates.
     const dx = target.center.x - source.center.x;
     const dy = target.center.y - source.center.y;
     const mid = pointAt(path, path.length / 2);
@@ -143,7 +142,7 @@ test("stacked tokens still get a finite arch", () => {
   assert.ok(path.length >= 0.5 * GRID);
 });
 
-test("long-range arcs are today's visible arc", () => {
+test("long-range lines are the range arc, unchanged from before the Etched Bow", () => {
   let checked = 0;
   for (const [col, row] of [[3, 0], [0, 3], [2, 2], [5, 1], [-4, 3], [8, -6], [20, 0], [0, -35], [30, 25]]) {
     for (const sourceSquares of [1, 2]) {
@@ -163,7 +162,7 @@ test("long-range arcs are today's visible arc", () => {
   assert.ok(checked >= 30);
 });
 
-test("the arch never draws less body than today's arc", () => {
+test("the arch never draws less body than the range arc", () => {
   for (const [sourceSquares, targetSquares] of [[1, 1], [2, 1], [1, 2]]) {
     for (let gap = 0; gap <= 5 * GRID; gap += 5) {
       const source = { center: { x: 0, y: 0 }, size: sourceSquares * GRID };

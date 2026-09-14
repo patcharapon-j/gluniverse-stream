@@ -1,6 +1,6 @@
 import { TARGET_LINE_MOTION } from "../constants.js";
 import { animate, remove } from "../motion/engine.js";
-import { createPath, lineGeometry, pointAt, ringRadius } from "./target-geometry.js";
+import { HEAD_HALF_WIDTH_SQUARES, HEAD_LENGTH_SQUARES, SWEEP_LENGTH_SQUARES, createPath, lineGeometry, pointAt, ringRadius } from "./target-geometry.js";
 
 /**
  * The etched rim under every body and reticle. A fixed near-black rather than a tint, because a dark edge is
@@ -16,11 +16,8 @@ const RETICLE_POP_SCALE = 1.6;
 /** During the pop, the reticle's alpha reaches 1 this many times sooner than its scale settles. */
 const RETICLE_POP_ALPHA_RATE = 1.6;
 const QUADRANT_SPAN = Math.PI * 0.22;
-const HEAD_LENGTH_SQUARES = 0.26;
-const HEAD_HALF_WIDTH_SQUARES = 0.11;
 /** The head fades in over the last stretch of the reach, so it lands with the line. */
 const HEAD_FADE_FROM = 0.82;
-const SWEEP_LENGTH_SQUARES = 0.6;
 /** The sweep's white hairline covers its leading part only. */
 const SWEEP_LEAD_FROM = 0.55;
 const TAU = Math.PI * 2;
@@ -41,7 +38,7 @@ const LINE = { width: 1, color: WHITE, alpha: 1, cap: "round", join: "round", na
  * would vanish under ADD), and `glint` adds the sweep's light on top.
  */
 export class TargetLine {
-  state = { reach: 0, body: 1, ringAlpha: 0, ringScale: 1, sweep: 0, spin: 0, pulse: 0.5, sink: 0, rise: 0 };
+  state = { reach: 0, body: 1, headOut: 1, ringAlpha: 0, ringScale: 1, sweep: 0, spin: 0, pulse: 0.5 };
   shown = false;
   leaving = false;
   destroyed = false;
@@ -59,7 +56,7 @@ export class TargetLine {
     this.onGone = onGone;
     this.haloGraphics = halo.addChild(new PIXI.Graphics());
     this.coreGraphics = core.addChild(new PIXI.Graphics());
-    this.glintGraphics = (glint ?? core).addChild(new PIXI.Graphics());
+    this.glintGraphics = glint.addChild(new PIXI.Graphics());
     this.glintGraphics.blendMode = PIXI.BLEND_MODES.ADD;
     this.setStyle(style);
     if (!calm) this.#startLoops();
@@ -67,6 +64,36 @@ export class TargetLine {
 
   get isSelfTarget() {
     return this.sourceId === this.targetId;
+  }
+
+  /** The token this line belongs to: its source, or the source a pending hand-off will relaunch it from. */
+  get origin() {
+    return this.nextSourceId ?? this.sourceId;
+  }
+
+  get color() {
+    return Number(this.style?.color) || 0;
+  }
+
+  /** How long `hide()` or `retarget()` takes to clear the body from full reach. */
+  get retractMs() {
+    const motion = TARGET_LINE_MOTION;
+    return this.calm ? motion.calmFadeOutMs : Math.max(motion.retractMs, motion.reticleCollapseMs);
+  }
+
+  /** The pause a hand-off leaves between this line's retract and its relaunch. */
+  get beatMs() {
+    return this.calm ? TARGET_LINE_MOTION.calmHandoffBeatMs : TARGET_LINE_MOTION.handoffBeatMs;
+  }
+
+  /** Whether this line can carry `targetId` over to `sourceId` in a hand-off: it is up, on that target, and not already theirs. */
+  canHandOff(targetId, sourceId) {
+    return this.shown && !this.leaving && !this.destroyed && this.targetId === targetId && this.origin !== sourceId;
+  }
+
+  /** Whether the body is currently drawn out of `tokenId` (a retargeted line still is, until it relaunches). */
+  isDrawnFrom(tokenId) {
+    return this.sourceId === tokenId;
   }
 
   setStyle(style) {
@@ -97,6 +124,7 @@ export class TargetLine {
     if (this.calm) {
       state.reach = 1;
       state.ringScale = 1;
+      state.headOut = 1;
       if (first) {
         state.body = 0;
         state.ringAlpha = 0;
@@ -109,6 +137,7 @@ export class TargetLine {
     const reachMs = this.isSelfTarget ? 1 : Math.max(1, motion.launchMs * (1 - clamp01(state.reach)));
     animate(state, { reach: 1, duration: reachMs, ease: "outCubic" });
     if (first) {
+      state.headOut = 1;
       state.ringAlpha = 0;
       state.ringScale = RETICLE_POP_SCALE;
       const delay = this.isSelfTarget ? 0 : motion.reticlePopDelayMs;
@@ -120,12 +149,10 @@ export class TargetLine {
         ease: "linear"
       });
     } else if (relaunch) {
+      state.headOut = 1;
       animate(state, { ringAlpha: 1, ringScale: 1, duration: motion.launchMs, ease: "outCubic" });
-      if (!this.isSelfTarget) {
-        animate(state, { rise: [0, 1], duration: motion.originRiseMs, ease: "linear" });
-      }
     } else if (reversing) {
-      animate(state, { ringAlpha: 1, ringScale: 1, duration: motion.reticleCollapseMs, ease: "outCubic" });
+      animate(state, { ringAlpha: 1, ringScale: 1, headOut: 1, duration: motion.reticleCollapseMs, ease: "outCubic" });
     }
   }
 
@@ -149,6 +176,7 @@ export class TargetLine {
       duration: motion.reticleCollapseMs,
       ease: "inCubic"
     });
+    this.#fadeHead();
     animate(state, {
       reach: 0,
       duration: Math.max(motion.reticleCollapseMs, motion.retractMs * clamp01(state.reach)),
@@ -158,9 +186,9 @@ export class TargetLine {
   }
 
   /**
-   * Hand the line to another source without losing its target: the body retracts into the current source while
-   * a hairline ring sinks into it, and the reticle stays up at 45% with its loops frozen. The line then waits;
-   * the controller calls `show()` after the beat to relaunch it from `sourceId`, or `hide()` if the target went.
+   * Hand the line to another source without losing its target: the body retracts into the current source and
+   * the reticle stays up at 45% with its loops frozen. The line then waits; the controller calls `show()` after
+   * the beat to relaunch it from `sourceId`, or `hide()` if the target went.
    */
   retarget(sourceId) {
     if (this.destroyed || this.leaving || !this.shown) return;
@@ -181,16 +209,9 @@ export class TargetLine {
       });
       return;
     }
+    this.#fadeHead();
     animate(state, { reach: 0, duration: Math.max(1, motion.retractMs * clamp01(state.reach)), ease: "inCubic" });
     animate(state, { ringAlpha: RETICLE_HANDOFF_ALPHA, ringScale: 1, duration: motion.retractMs, ease: "inCubic" });
-    if (!this.isSelfTarget) {
-      animate(state, {
-        sink: [0, 1],
-        duration: motion.originSinkMs,
-        delay: Math.max(0, motion.retractMs - motion.originSinkMs),
-        ease: "linear"
-      });
-    }
   }
 
   destroy() {
@@ -215,24 +236,23 @@ export class TargetLine {
     if (this.destroyed || !source?.document || !target?.document) return;
 
     const state = this.state;
-    const color = Number(this.style?.color) || 0;
+    const color = this.color;
     const bright = this.bright;
     const zoom = Math.max(0.05, Number(scale) || 1);
     // Soft widths are authored in screen pixels and only partly follow the zoom, so the line stays legible when
     // the camera pulls back and does not turn into a rope when it pushes in. A hairline is one device pixel.
     const u = Math.max(0.5, Number(this.style?.intensity) || 1) / Math.pow(zoom, 0.65);
-    const hl = 1 / (zoom * Math.max(0.25, Number(resolution) || 1));
+    const hl = hairlineWidth(zoom, resolution);
     const pulse = this.calm ? 0.5 : clamp01(state.pulse);
     const body = clamp01(state.body);
     const reach = clamp01(state.reach);
-    const from = source.center;
     const to = target.center;
     const targetSize = Math.max(target.w, target.h);
     const point = this.#point;
 
     if (!this.isSelfTarget && reach > 0.001 && body > 0.001) {
       const input = this.#geometry;
-      input.from = from;
+      input.from = source.center;
       input.to = to;
       input.sourceSize = Math.max(source.w, source.h);
       input.targetSize = targetSize;
@@ -259,7 +279,8 @@ export class TargetLine {
       }
 
       pointAt(path, end, point);
-      const headAlpha = clamp01((reach - HEAD_FADE_FROM) / (1 - HEAD_FADE_FROM)) * body;
+      const headIn = clamp01((reach - HEAD_FADE_FROM) / (1 - HEAD_FADE_FROM));
+      const headAlpha = headIn * clamp01(state.headOut) * body;
       if (headAlpha > 0.001) {
         drawHead(core, point, HEAD_LENGTH_SQUARES * gridSize, HEAD_HALF_WIDTH_SQUARES * gridSize, hl, color, bright, headAlpha);
       }
@@ -282,26 +303,16 @@ export class TargetLine {
         strokeArc(core, to.x, to.y, radius, start, start + QUADRANT_SPAN, hl, bright, 0.95 * ringAlpha);
       }
     }
-
-    // Hand-off origin cue: the same hairline ring sinking into the old source, then rising out of the new one.
-    if (!this.calm && !this.isSelfTarget) {
-      const sourceRadius = Math.max(source.w, source.h) / 2;
-      const sink = Number(state.sink) || 0;
-      if (sink > 0 && sink < 1) {
-        const radius = sourceRadius * lerp(1.45, 0.9, sink * sink * sink);
-        strokeCircle(core, from.x, from.y, radius, hl, bright, 0.9 * (1 - (0.6 * sink)));
-      }
-      const rise = Number(state.rise) || 0;
-      if (rise > 0 && rise < 1) {
-        const radius = sourceRadius * lerp(0.9, 1.5, 1 - Math.pow(1 - rise, 3));
-        strokeCircle(core, from.x, from.y, radius, hl, bright, 0.9 * (1 - rise));
-      }
-    }
   }
 
   /** The sweep only runs down a body that is fully drawn and staying. */
   #holding(reach) {
     return !this.calm && !this.leaving && this.nextSourceId == null && reach >= 0.999;
+  }
+
+  /** The head goes in the first moments of a retract, rather than riding the body back into the source. */
+  #fadeHead() {
+    animate(this.state, { headOut: 0, duration: TARGET_LINE_MOTION.headFadeOutMs, ease: "linear" });
   }
 
   #startLoops() {
@@ -326,6 +337,61 @@ export class TargetLine {
   #resumeLoops() {
     for (const loop of this.loops) loop?.resume?.();
   }
+}
+
+/**
+ * A hand-off's "the origin moved" cue: one hairline ring sinking into the old token over the end of the retract,
+ * or rising out of the new token as its lines launch. The controller draws one per token per hand-off, however
+ * many targets are handed over, and never in calm motion. It removes itself when it has played.
+ */
+export class OriginRing {
+  state = { progress: 0 };
+  destroyed = false;
+
+  constructor({ layer, tokenId, kind, color, onGone }) {
+    this.tokenId = tokenId;
+    this.kind = kind;
+    this.onGone = onGone;
+    this.bright = mixColor(Number(color) || 0, WHITE, 0.65);
+    this.graphics = layer.addChild(new PIXI.Graphics());
+    const motion = TARGET_LINE_MOTION;
+    const sinking = kind === "sink";
+    animate(this.state, {
+      progress: [0, 1],
+      duration: sinking ? motion.originSinkMs : motion.originRiseMs,
+      delay: sinking ? Math.max(0, motion.retractMs - motion.originSinkMs) : 0,
+      ease: "linear",
+      onComplete: () => this.destroy()
+    });
+  }
+
+  render({ source, scale, resolution = 1 }) {
+    const graphics = this.graphics;
+    graphics.clear();
+    const progress = Number(this.state.progress) || 0;
+    if (this.destroyed || !source?.center || progress <= 0 || progress >= 1) return;
+    const tokenRadius = Math.max(source.w, source.h) / 2;
+    const sinking = this.kind === "sink";
+    const radius = tokenRadius * (sinking
+      ? lerp(1.45, 0.9, progress * progress * progress)
+      : lerp(0.9, 1.5, 1 - Math.pow(1 - progress, 3)));
+    const alpha = 0.9 * (sinking ? 1 - (0.6 * progress) : 1 - progress);
+    const hl = hairlineWidth(Math.max(0.05, Number(scale) || 1), resolution);
+    strokeCircle(graphics, source.center.x, source.center.y, radius, hl, this.bright, alpha);
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    remove(this.state);
+    if (!this.graphics.destroyed) this.graphics.destroy();
+    this.onGone?.(this);
+  }
+}
+
+/** One device pixel in world units, at this zoom and renderer resolution. */
+function hairlineWidth(zoom, resolution) {
+  return 1 / (zoom * Math.max(0.25, Number(resolution) || 1));
 }
 
 function setLine(graphics, width, color, alpha) {

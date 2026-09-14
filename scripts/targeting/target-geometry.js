@@ -7,7 +7,7 @@
  *
  * Two shapes, blended by how close the tokens are:
  *
- * - At range the line is exactly today's arc: a Bézier between the token centres, bowed left of travel by 0.16
+ * - At range the line is the range arc, unchanged from before the Etched Bow: a Bézier between the token centres, bowed left of travel by 0.16
  *   of their distance (at most 2.5 squares), cut to start 0.92 of the source's half-size along it and to stop at
  *   the reticle, 1.12 of the target's half-size before its end. A piece of a quadratic Bézier is itself one, so
  *   that cut is kept exactly.
@@ -34,11 +34,19 @@ export const CLOSE_RANGE_SQUARES = 1.2;
 export const MAX_SHOULDER_RADIANS = (55 * Math.PI) / 180;
 /** The least mid-curve lift of the arch with the tokens touching, in grid squares; it fades with closeness. */
 export const HOP_SQUARES = 0.45;
-/** The arch has fully replaced today's arc by this closeness. */
+/** The arch has fully replaced the range arc by this closeness. */
 export const ARCH_ONSET = 0.5;
 
-/** Today's arc, cut to its visible part, for the blend: x0, y0, cx, cy, x1, y1. */
-const todays = new Float64Array(6);
+/**
+ * Drawn sizes along the path, in grid squares. They live beside the shares above so that what a melee body is
+ * measured against is the head the renderer actually draws.
+ */
+export const HEAD_LENGTH_SQUARES = 0.26;
+export const HEAD_HALF_WIDTH_SQUARES = 0.11;
+export const SWEEP_LENGTH_SQUARES = 0.6;
+
+/** The range arc, cut to its visible part, for the blend: x0, y0, cx, cy, x1, y1. */
+const rangeArc = new Float64Array(6);
 
 export function ringRadius(targetSize) {
   return (targetSize / 2) * RING_SHARE;
@@ -67,7 +75,7 @@ export function lineGeometry({ from, to, sourceSize, targetSize, gridSize }, pat
   // Tokens stacked on one spot have no direction of travel; this one bows straight up the screen.
   const ux = distance > EPSILON ? dx / distance : -1;
   const uy = distance > EPSILON ? dy / distance : 0;
-  // The bow side, left of travel in screen space: the side today's arc has always bowed to.
+  // The bow side, left of travel in screen space: the side the range arc has always bowed to.
   const nx = -uy;
   const ny = ux;
   const startTrim = (sourceSize / 2) * START_TRIM_SHARE;
@@ -103,14 +111,14 @@ export function lineGeometry({ from, to, sourceSize, targetSize, gridSize }, pat
 
   if (archWeight < 1) {
     // Only reached with the edges at least 0.6 squares apart, so the direction of travel is well defined.
-    cutTodaysArc(from, to, distance, ux, uy, startTrim, ring, gridSize);
+    cutRangeArc(from, to, distance, ux, uy, startTrim, ring, gridSize);
     const keep = 1 - archWeight;
-    x0 = (todays[0] * keep) + (x0 * archWeight);
-    y0 = (todays[1] * keep) + (y0 * archWeight);
-    cx = (todays[2] * keep) + (cx * archWeight);
-    cy = (todays[3] * keep) + (cy * archWeight);
-    x1 = (todays[4] * keep) + (x1 * archWeight);
-    y1 = (todays[5] * keep) + (y1 * archWeight);
+    x0 = (rangeArc[0] * keep) + (x0 * archWeight);
+    y0 = (rangeArc[1] * keep) + (y0 * archWeight);
+    cx = (rangeArc[2] * keep) + (cx * archWeight);
+    cy = (rangeArc[3] * keep) + (cy * archWeight);
+    x1 = (rangeArc[4] * keep) + (x1 * archWeight);
+    y1 = (rangeArc[5] * keep) + (y1 * archWeight);
   }
 
   sampleCurve(path, x0, y0, cx, cy, x1, y1);
@@ -137,10 +145,10 @@ export function pointAt(path, arc, out = { x: 0, y: 0, tx: 1, ty: 0 }) {
 }
 
 /**
- * Today's arc between the token centres, cut from `startTrim` along it to `ring` before its end. The piece of a
+ * The range arc between the token centres, cut from `startTrim` along it to `ring` before its end. The piece of a
  * quadratic Bézier on [t0, t1] has endpoints B(t0), B(t1) and control point B's blossom at (t0, t1).
  */
-function cutTodaysArc(from, to, distance, ux, uy, startTrim, ring, gridSize) {
+function cutRangeArc(from, to, distance, ux, uy, startTrim, ring, gridSize) {
   const bend = Math.min(distance * BEND_SHARE, MAX_BEND_SQUARES * gridSize);
   const px = ((from.x + to.x) / 2) - (uy * bend);
   const py = ((from.y + to.y) / 2) + (ux * bend);
@@ -152,12 +160,12 @@ function cutTodaysArc(from, to, distance, ux, uy, startTrim, ring, gridSize) {
   const a = (1 - t0) * (1 - t1);
   const b = ((1 - t0) * t1) + (t0 * (1 - t1));
   const c = t0 * t1;
-  todays[0] = bezier(from.x, px, to.x, t0);
-  todays[1] = bezier(from.y, py, to.y, t0);
-  todays[2] = (a * from.x) + (b * px) + (c * to.x);
-  todays[3] = (a * from.y) + (b * py) + (c * to.y);
-  todays[4] = bezier(from.x, px, to.x, t1);
-  todays[5] = bezier(from.y, py, to.y, t1);
+  rangeArc[0] = bezier(from.x, px, to.x, t0);
+  rangeArc[1] = bezier(from.y, py, to.y, t0);
+  rangeArc[2] = (a * from.x) + (b * px) + (c * to.x);
+  rangeArc[3] = (a * from.y) + (b * py) + (c * to.y);
+  rangeArc[4] = bezier(from.x, px, to.x, t1);
+  rangeArc[5] = bezier(from.y, py, to.y, t1);
 }
 
 /**

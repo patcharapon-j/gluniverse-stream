@@ -105,6 +105,8 @@ export const TARGET_LINE_MOTION = {
   reticleCollapseMs: 220,
   /** Retract: the body drawing back into the source from full length. */
   retractMs: 360,
+  /** Retract: the head fades out within the first 15% of it, so it never trails a withdrawing body. */
+  headFadeOutMs: 54,
   /** Hand-off: the pause, body absent and reticle dimmed, between the retract and the relaunch. */
   handoffBeatMs: 140,
   /** Hand-off: a hairline ring sinks into the old source over the end of the retract... */

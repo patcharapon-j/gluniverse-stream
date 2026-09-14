@@ -1,9 +1,9 @@
 import { getActiveCombatant, getActiveSceneCombat, getCombatantToken } from "../combat-utils.js";
-import { MODULE_ID, TARGET_LINE_MOTION, TARGET_LINE_VISIBILITY } from "../constants.js";
+import { MODULE_ID, TARGET_LINE_VISIBILITY } from "../constants.js";
 import { createTimer, onCanvasFrame, prefersCalmMotion } from "../motion/engine.js";
 import { getSetting, getTargetingSettings, isConfiguredStreamUser } from "../settings.js";
-import { getCanvasToken, isVisibleToken, playerControllers, targetsOfToken } from "../token-utils.js";
-import { TargetLine } from "./target-line.js";
+import { getCanvasToken, isVisibleToken, playerControllingUsers, targetsOfToken, turnPlayers } from "../token-utils.js";
+import { OriginRing, TargetLine } from "./target-line.js";
 
 /** Above rulers and cursors, below the scrolling combat text. */
 const LAYER_Z_INDEX = 1050;
@@ -17,6 +17,8 @@ const HALO_BLUR_QUALITY = 2;
  */
 export class TargetLineController {
   lines = new Map();
+  /** Hand-off origin rings still playing: at most one sink per old token and one rise per new token. */
+  rings = new Set();
   layer = null;
   halo = null;
   core = null;
@@ -28,6 +30,9 @@ export class TargetLineController {
   carriedTargets = new Map();
   /** While set, the lines of `sourceId` wait for the previous turn's lines to retract. */
   handoff = null;
+  /** The token whose lines a finished hand-off is about to launch, so one ring can rise out of it. */
+  pendingRiseId = null;
+  #renderArgs = { source: null, target: null, scale: 1, gridSize: 100, resolution: 1 };
 
   registerHooks() {
     Hooks.on("canvasReady", () => {
@@ -94,6 +99,7 @@ export class TargetLineController {
     const firstContext = this.turnContext === undefined;
     const previousSourceId = this.turnSourceId;
     const source = getCombatantToken(combatant);
+    const sourceId = source?.document?.id ?? null;
     this.carriedTargets.clear();
     // Foundry targets belong to users, not creatures. Record every selection standing at the turn change;
     // on a GM-controlled turn these are not reassigned to the next creature, including another NPC the same
@@ -106,7 +112,10 @@ export class TargetLineController {
       }
     }
     this.turnContext = context;
-    this.turnSourceId = source?.document?.id ?? null;
+    this.turnSourceId = sourceId;
+    // A re-sort or an insert that moves the turn index while the same token is still acting is not a new turn
+    // for the hand-off: a pending retract and beat carry on.
+    if (sourceId === previousSourceId) return;
     this.#cancelHandoff();
     if (!firstContext) this.#beginHandoff(getCanvasToken(previousSourceId), source);
   }
@@ -115,21 +124,26 @@ export class TargetLineController {
    * When one player's turn passes to another token of theirs (a character, then its companion), their
    * lines would otherwise leap straight from one token to the next. Instead the previous token's lines
    * retract completely, a beat passes, and only then do the current token's lines launch, even onto the
-   * same targets. Turns between different players, or run by the GM, change over at once.
+   * same targets. One ring sinks into the old token and one rises out of the new. Turns between different
+   * players, or run by the GM, change over at once.
    */
   #beginHandoff(previous, current) {
+    const fromId = previous?.document?.id;
     const sourceId = current?.document?.id;
-    if (!previous || !sourceId || previous.document?.id === sourceId) return;
-    if (!sharesPlayerController(previous, current)) return;
-    const retracting = [...this.lines.values()].filter(line => !line.destroyed && line.sourceId !== sourceId);
+    if (!fromId || !sourceId || fromId === sourceId) return;
+    if (!sameTurnPlayer(previous, current)) return;
+    const outgoing = [...this.lines.values()].filter(line => line.origin !== sourceId);
     // Nothing on screen to retract: there is nothing to wait for.
-    if (!retracting.length) return;
+    if (!outgoing.length) return;
+    const drawnFromPrevious = outgoing.find(line => line.isDrawnFrom(fromId));
+    if (drawnFromPrevious) this.#addRing("sink", fromId, drawnFromPrevious.color);
     const handoff = { sourceId, timer: null };
     handoff.timer = createTimer({
-      duration: Math.max(...retracting.map(line => handoffHoldMs(line.calm))),
+      duration: Math.max(...outgoing.map(line => line.retractMs + line.beatMs)),
       onComplete: () => {
         if (this.handoff !== handoff) return;
         this.handoff = null;
+        this.pendingRiseId = sourceId;
         this.refresh();
       }
     });
@@ -139,6 +153,7 @@ export class TargetLineController {
   #cancelHandoff() {
     this.handoff?.timer?.cancel?.();
     this.handoff = null;
+    this.pendingRiseId = null;
   }
 
   #sync() {
@@ -146,7 +161,7 @@ export class TargetLineController {
     const settings = getTargetingSettings();
     const desired = this.#desiredLines(settings);
     const waitingSourceId = this.handoff?.sourceId ?? null;
-    if (waitingSourceId) this.#carryReticles(desired, waitingSourceId);
+    if (waitingSourceId) this.#keepSharedLines(desired, waitingSourceId);
     for (const [key, line] of this.lines) {
       const wanted = desired.get(key);
       if (!wanted) {
@@ -174,6 +189,7 @@ export class TargetLineController {
       this.lines.set(key, line);
       line.show();
     }
+    this.#riseFromLaunchingToken(desired);
     this.#updateListening();
   }
 
@@ -182,17 +198,45 @@ export class TargetLineController {
    * retracts into the old source while the reticle stays up, dimmed, and relaunches from the new source after
    * the beat. Only a target that changes collapses its reticle.
    */
-  #carryReticles(desired, sourceId) {
+  #keepSharedLines(desired, sourceId) {
     for (const [key, wanted] of desired) {
       if (wanted.sourceId !== sourceId || this.lines.has(key)) continue;
       for (const [heldKey, line] of this.lines) {
-        if (line.targetId !== wanted.targetId || line.destroyed || line.leaving || !line.shown) continue;
+        if (!line.canHandOff(wanted.targetId, sourceId)) continue;
         this.lines.delete(heldKey);
         this.lines.set(key, line);
         line.retarget(sourceId);
         break;
       }
     }
+  }
+
+  /** As a finished hand-off launches the new token's lines, one ring rises out of it, however many there are. */
+  #riseFromLaunchingToken(desired) {
+    const tokenId = this.pendingRiseId;
+    if (!tokenId) return;
+    this.pendingRiseId = null;
+    for (const wanted of desired.values()) {
+      if (wanted.sourceId !== tokenId) continue;
+      this.#addRing("rise", tokenId, wanted.style.color);
+      return;
+    }
+  }
+
+  #addRing(kind, tokenId, color) {
+    if (!this.layer || this.layer.destroyed || prefersCalmMotion()) return;
+    const ring = new OriginRing({
+      layer: this.core,
+      tokenId,
+      kind,
+      color,
+      onGone: gone => {
+        this.rings.delete(gone);
+        this.#updateListening();
+      }
+    });
+    this.rings.add(ring);
+    this.#updateListening();
   }
 
   /** Lines can change key during a hand-off, so a finished line is found by identity. */
@@ -215,7 +259,7 @@ export class TargetLineController {
     // A player's targets are their standing intent for their own creature, so they show from the first
     // frame of its turn, round after round. The GM's selection is left over from whichever NPC acted last,
     // so a GM-controlled turn only draws targets picked during that turn.
-    const includeTarget = playerControllers(source).length
+    const includeTarget = playerControllingUsers(source).length
       ? undefined
       : (user, target) => !this.carriedTargets.get(user.id)?.has(target.document.id);
     for (const target of targetsOfToken(source, includeTarget)) {
@@ -233,10 +277,11 @@ export class TargetLineController {
 
   #render() {
     if (!canvas?.ready) return;
-    const scale = canvas.stage?.scale?.x ?? 1;
-    const gridSize = canvas.grid?.size ?? canvas.dimensions?.size ?? 100;
+    const args = this.#renderArgs;
+    args.scale = canvas.stage?.scale?.x ?? 1;
+    args.gridSize = canvas.grid?.size ?? canvas.dimensions?.size ?? 100;
     // Hairlines are one device pixel, so they need the renderer's resolution as well as the zoom.
-    const resolution = canvas.app?.renderer?.resolution ?? globalThis.devicePixelRatio ?? 1;
+    args.resolution = canvas.app?.renderer?.resolution ?? globalThis.devicePixelRatio ?? 1;
     for (const line of this.lines.values()) {
       const source = getCanvasToken(line.sourceId);
       const target = getCanvasToken(line.targetId);
@@ -244,13 +289,27 @@ export class TargetLineController {
         line.destroy();
         continue;
       }
-      line.render({ source, target, scale, gridSize, resolution });
+      args.source = source;
+      args.target = target;
+      line.render(args);
     }
+    args.target = null;
+    for (const ring of this.rings) {
+      const token = getCanvasToken(ring.tokenId);
+      if (!token || token.destroyed) {
+        ring.destroy();
+        continue;
+      }
+      args.source = token;
+      ring.render(args);
+    }
+    args.source = null;
   }
 
   #updateListening() {
-    if (this.lines.size && !this.stopListening) this.stopListening = onCanvasFrame(() => this.#render());
-    else if (!this.lines.size && this.stopListening) {
+    const drawing = this.lines.size > 0 || this.rings.size > 0;
+    if (drawing && !this.stopListening) this.stopListening = onCanvasFrame(() => this.#render());
+    else if (!drawing && this.stopListening) {
       this.stopListening();
       this.stopListening = null;
     }
@@ -283,6 +342,8 @@ export class TargetLineController {
 
   #teardown() {
     this.#cancelHandoff();
+    for (const ring of [...this.rings]) ring.destroy();
+    this.rings.clear();
     for (const line of [...this.lines.values()]) line.destroy();
     this.lines.clear();
     this.#updateListening();
@@ -298,27 +359,16 @@ export class TargetLineController {
 }
 
 /**
- * Whether two turns belong to the same player, for a turn handoff: the tokens' controlling players (the
- * active non-GM owners, the same rule `targetsOfToken` uses) have at least one person in common.
+ * Whether two turns belong to the same player, for a hand-off: their turn players (`turnPlayers`, the users
+ * whose assigned character each token is, else its active non-GM owners) have at least one person in common.
  *
- * Overlap rather than equality, because a token several players share, such as a mount or a party
- * companion, could be acted for by either of them, so its turn after either one's own character reads as
- * the same hands moving on. Offline owners never count. GM-controlled tokens never share: the GM runs every
- * NPC, and treating that as one player would put a pause between every pair of NPC turns.
+ * A player's own character followed by their unassigned companion hands off, as does a mount several players own
+ * after any of their characters. Two players' characters do not, even where every player owns every character.
+ * GM-controlled tokens have no turn players, so NPC turns never hand off.
  */
-function sharesPlayerController(previous, current) {
-  const previousIds = new Set(playerControllers(previous).map(user => user.id));
-  return playerControllers(current).some(user => previousIds.has(user.id));
-}
-
-/**
- * How long a hand-off holds the incoming token's lines: the outgoing body's full retract (matching
- * `TargetLine#retarget` and `#hide`), then the beat.
- */
-function handoffHoldMs(calm) {
-  const motion = TARGET_LINE_MOTION;
-  if (calm) return motion.calmFadeOutMs + motion.calmHandoffBeatMs;
-  return Math.max(motion.retractMs, motion.reticleCollapseMs) + motion.handoffBeatMs;
+function sameTurnPlayer(previous, current) {
+  const previousIds = new Set(turnPlayers(previous).map(user => user.id));
+  return turnPlayers(current).some(user => previousIds.has(user.id));
 }
 
 function canShowLines(settings) {

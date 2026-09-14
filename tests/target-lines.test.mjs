@@ -9,7 +9,8 @@ const asScript = code => code.replace(/^import .*;\r?\n/gm, "").replace(/^export
 
 /**
  * A TargetLineController wired to fake Foundry globals, a fake TargetLine that logs show/hide/retarget, a
- * queued requestAnimationFrame and a fake anime.js timer clock.
+ * fake OriginRing that logs what it was asked to draw, a queued requestAnimationFrame and a fake anime.js
+ * timer clock.
  */
 function createHarness({ users, calm = true }) {
   const hooks = new Map();
@@ -17,6 +18,7 @@ function createHarness({ users, calm = true }) {
   const tokens = new Map();
   const clock = { now: 0, timers: [] };
   const log = [];
+  const rings = [];
   const combat = { id: "combat", started: true, round: 1, turn: 0, combatant: null };
 
   class FakeTargetLine {
@@ -28,7 +30,27 @@ function createHarness({ users, calm = true }) {
       Object.assign(this, options);
     }
     get key() {
-      return `${this.nextSourceId ?? this.sourceId}>${this.targetId}`;
+      return `${this.origin}>${this.targetId}`;
+    }
+    get origin() {
+      return this.nextSourceId ?? this.sourceId;
+    }
+    get color() {
+      return this.style?.color ?? 0;
+    }
+    get retractMs() {
+      const motion = context.TARGET_LINE_MOTION;
+      return this.calm ? motion.calmFadeOutMs : Math.max(motion.retractMs, motion.reticleCollapseMs);
+    }
+    get beatMs() {
+      const motion = context.TARGET_LINE_MOTION;
+      return this.calm ? motion.calmHandoffBeatMs : motion.handoffBeatMs;
+    }
+    canHandOff(targetId, sourceId) {
+      return this.shown && !this.leaving && !this.destroyed && this.targetId === targetId && this.origin !== sourceId;
+    }
+    isDrawnFrom(tokenId) {
+      return this.sourceId === tokenId;
     }
     record(event) {
       log.push({ event, line: this, key: this.key, at: clock.now });
@@ -60,7 +82,23 @@ function createHarness({ users, calm = true }) {
       this.destroyed = true;
       this.onGone?.(this);
     }
-    setStyle() {}
+    setStyle(style) {
+      this.style = style;
+    }
+  }
+
+  class FakeOriginRing {
+    destroyed = false;
+    constructor(options) {
+      Object.assign(this, options);
+      rings.push({ kind: options.kind, tokenId: options.tokenId, at: clock.now });
+    }
+    render() {}
+    destroy() {
+      if (this.destroyed) return;
+      this.destroyed = true;
+      this.onGone?.(this);
+    }
   }
 
   const context = vm.createContext({
@@ -92,7 +130,8 @@ function createHarness({ users, calm = true }) {
       clock.timers.push(timer);
       return timer;
     },
-    TargetLine: FakeTargetLine
+    TargetLine: FakeTargetLine,
+    OriginRing: FakeOriginRing
   });
   vm.runInContext([
     asScript(read("../scripts/constants.js")),
@@ -115,6 +154,7 @@ function createHarness({ users, calm = true }) {
     combat,
     clock,
     log,
+    rings,
     motion: context.TARGET_LINE_MOTION,
     flush,
     emit,
@@ -130,11 +170,9 @@ function createHarness({ users, calm = true }) {
       };
       flush();
     },
-    /** A token whose actor is owned by the given users (none: a GM-controlled NPC). */
+    /** A token whose actor (id `actor-<token id>`) is owned by the given users (none: a GM-controlled NPC). */
     token(id, owners = []) {
-      const actor = owners.length
-        ? { ownership: Object.fromEntries(owners.map(user => [user.id, 3])) }
-        : null;
+      const actor = { id: `actor-${id}`, ownership: Object.fromEntries(owners.map(user => [user.id, 3])) };
       const token = { document: { id, disposition: 1 }, visible: true, actor };
       tokens.set(id, token);
       return token;
@@ -183,13 +221,16 @@ function createHarness({ users, calm = true }) {
     /** Log entries for a line object, or for whatever line held a key when the entry was made. */
     events(lineOrKey) {
       return log.filter(entry => (typeof lineOrKey === "string" ? entry.key === lineOrKey : entry.line === lineOrKey));
+    },
+    ringLog() {
+      return rings.map(ring => [ring.kind, ring.tokenId, ring.at]);
     }
   };
   return harness;
 }
 
-const gmUser = (targets = []) => ({ id: "gm", active: true, isGM: true, targets: new Set(targets) });
-const player = (id, targets = []) => ({ id, active: true, isGM: false, targets: new Set(targets) });
+const gmUser = (targets = []) => ({ id: "gm", active: true, isGM: true, character: null, targets: new Set(targets) });
+const player = (id, targets = []) => ({ id, active: true, isGM: false, character: null, targets: new Set(targets) });
 const holdFor = (motion, calm) => (calm
   ? motion.calmFadeOutMs + motion.calmHandoffBeatMs
   : Math.max(motion.retractMs, motion.reticleCollapseMs) + motion.handoffBeatMs);
@@ -230,6 +271,7 @@ test("a GM-controlled turn ignores the GM's carried targets until they target fr
   assert.equal(h.shown("first>target"), true);
   assert.equal(gm.targets.has(target), true, "display filtering must preserve Foundry targets");
   assert.equal(h.liveTimers().length, 0, "GM turns never hand off");
+  assert.deepEqual(h.ringLog(), []);
 });
 
 test("a player's standing targets show when their turn starts, and again next round", () => {
@@ -285,23 +327,22 @@ test("an NPC turn after a player turn still suppresses the GM's standing selecti
 });
 
 /** Seri's character hands the turn to Seri's companion with the same target up. */
-function handoffScenario({ calm }) {
+function handoffScenario({ calm, targets = ["goblin"] }) {
   const gm = gmUser();
   const seri = player("seri");
   const h = createHarness({ users: [gm, seri], calm });
   const pc = h.token("pc", [seri]);
   const pet = h.token("pet", [seri]);
-  const goblin = h.token("goblin");
-  seri.targets.add(goblin);
+  for (const id of targets) seri.targets.add(h.token(id));
   h.start(pc);
-  assert.equal(h.shown("pc>goblin"), true);
-  const line = h.controller.lines.get("pc>goblin");
+  const line = h.controller.lines.get(`pc>${targets[0]}`);
+  assert.equal(h.shown(`pc>${targets[0]}`), true);
   h.advance(2000);
 
   const handedOffAt = h.clock.now;
   h.turn(pet);
   h.flush();
-  return { h, line, handedOffAt, seri, pc, pet, goblin };
+  return { h, line, handedOffAt, seri, pc, pet };
 }
 
 for (const calm of [false, true]) {
@@ -317,6 +358,7 @@ for (const calm of [false, true]) {
     assert.equal(line.sourceId, "pc", "the body retracts into the old source first");
     assert.deepEqual(h.events(line).map(entry => entry.event), ["show", "retarget"]);
     assert.deepEqual(h.liveTimers().map(timer => timer.duration), [hold]);
+    assert.deepEqual(h.ringLog(), calm ? [] : [["sink", "pc", handedOffAt]], "a ring sinks into the old token");
 
     h.emit("sightRefresh");
     h.advance(hold - 1);
@@ -330,10 +372,25 @@ for (const calm of [false, true]) {
     const relaunch = h.events(line).find(entry => entry.event === "relaunch");
     assert.equal(retarget.at, handedOffAt);
     assert.equal(relaunch.at - retarget.at, hold, "launch follows the full retract plus the beat");
+    assert.deepEqual(
+      h.ringLog(),
+      calm ? [] : [["sink", "pc", handedOffAt], ["rise", "pet", handedOffAt + hold]],
+      "a ring rises out of the new token as its lines launch; calm motion has no rings"
+    );
   });
 }
 
-test("a handoff onto a different target collapses the old reticle and launches after the beat", () => {
+test("a hand-off draws one ring per token however many targets it carries", () => {
+  const { h, handedOffAt } = handoffScenario({ calm: false, targets: ["goblin", "orc", "kobold"] });
+  assert.equal(h.controller.lines.size, 3);
+  assert.deepEqual(h.ringLog(), [["sink", "pc", handedOffAt]]);
+  const hold = holdFor(h.motion, false);
+  h.advance(hold);
+  assert.equal(h.shown("pet>goblin") && h.shown("pet>orc") && h.shown("pet>kobold"), true);
+  assert.deepEqual(h.ringLog(), [["sink", "pc", handedOffAt], ["rise", "pet", handedOffAt + hold]]);
+});
+
+test("a hand-off onto a different target collapses the old reticle and still moves the origin", () => {
   const gm = gmUser();
   const seri = player("seri");
   const h = createHarness({ users: [gm, seri], calm: false });
@@ -355,11 +412,13 @@ test("a handoff onto a different target collapses the old reticle and launches a
   assert.equal(old.leaving, true, "the old reticle collapses");
   assert.equal(h.events(old).some(entry => entry.event === "retarget"), false);
   assert.equal(h.controller.lines.has("pet>orc"), false, "the new line waits for the retract and beat");
+  assert.deepEqual(h.ringLog(), [["sink", "pc", handedOffAt]], "ring in, ring out, even with a new target");
 
   const hold = holdFor(h.motion, false);
   h.advance(hold);
   assert.equal(h.shown("pet>orc"), true);
   assert.equal(h.events("pet>orc")[0].at - handedOffAt, hold);
+  assert.deepEqual(h.ringLog(), [["sink", "pc", handedOffAt], ["rise", "pet", handedOffAt + hold]]);
 });
 
 test("a turn passing to a different player launches straight away", () => {
@@ -382,9 +441,43 @@ test("a turn passing to a different player launches straight away", () => {
   assert.notEqual(h.controller.lines.get("tavi-pc>goblin"), old);
   assert.equal(h.liveTimers().length, 0);
   assert.equal(h.events("tavi-pc>goblin")[0].at, h.events(old)[1].at, "overlapping, not sequential");
+  assert.deepEqual(h.ringLog(), []);
 });
 
-test("a shared token hands off when its controllers overlap the previous token's", () => {
+test("assigned characters tell players apart where every player owns every character", () => {
+  const gm = gmUser();
+  const seri = player("seri");
+  const tavi = player("tavi");
+  const h = createHarness({ users: [gm, seri, tavi], calm: false });
+  const seriPc = h.token("seri-pc", [seri, tavi]);
+  const taviPc = h.token("tavi-pc", [seri, tavi]);
+  // Seri's companion: nobody's assigned character, owned by Seri alone.
+  const wolf = h.token("wolf", [seri]);
+  seri.character = seriPc.actor;
+  tavi.character = taviPc.actor;
+  const goblin = h.token("goblin");
+  seri.targets.add(goblin);
+  tavi.targets.add(goblin);
+  h.start(seriPc);
+
+  h.turn(taviPc);
+  h.flush();
+  assert.equal(h.liveTimers().length, 0, "Seri's character then Tavi's is two players, not a hand-off");
+  assert.equal(h.shown("tavi-pc>goblin"), true);
+
+  h.turn(seriPc);
+  h.flush();
+  assert.equal(h.liveTimers().length, 0, "and back again");
+  assert.equal(h.shown("seri-pc>goblin"), true);
+
+  h.turn(wolf);
+  h.flush();
+  assert.equal(h.liveTimers().length, 1, "Seri's character then Seri's unassigned companion hands off");
+  h.advance(5000);
+  assert.equal(h.shown("wolf>goblin"), true);
+});
+
+test("a shared token hands off when its owners overlap the previous token's, with nobody assigned", () => {
   const gm = gmUser();
   const seri = player("seri");
   const tavi = player("tavi");
@@ -407,7 +500,7 @@ test("a shared token hands off when its controllers overlap the previous token's
   // {seri} then {seri, tavi}: Seri may be acting on both turns. The mount's targets are both owners'.
   h.turn(mount);
   h.flush();
-  assert.equal(h.liveTimers().length, 1, "overlapping controllers hand off");
+  assert.equal(h.liveTimers().length, 1, "overlapping owners hand off");
   assert.equal(h.controller.lines.get("mount>goblin"), carried, "the shared target keeps its reticle");
   assert.equal(h.controller.lines.has("mount>orc"), false, "a target new to this turn waits for the beat");
   settle();
@@ -428,17 +521,17 @@ test("a shared token hands off when its controllers overlap the previous token's
   assert.equal(h.shown("oren-pc>goblin"), true);
   assert.equal(h.liveTimers().length, 0);
 
-  // A co-owner who is offline does not count as a controller.
+  // A co-owner who is offline does not count.
   tavi.active = false;
   h.turn(mount);
   h.flush();
   settle();
   h.turn(taviPc);
   h.flush();
-  assert.equal(h.liveTimers().length, 0, "the mount's only active controller was Seri, and tavi-pc is GM-run now");
+  assert.equal(h.liveTimers().length, 0, "the mount's only active owner was Seri, and tavi-pc is GM-run now");
 });
 
-test("a handoff with nothing on screen launches straight away", () => {
+test("a hand-off with nothing on screen launches straight away", () => {
   const gm = gmUser();
   const seri = player("seri");
   const h = createHarness({ users: [gm, seri], calm: false });
@@ -453,9 +546,10 @@ test("a handoff with nothing on screen launches straight away", () => {
   h.flush();
   assert.equal(h.liveTimers().length, 0);
   assert.equal(h.shown("pet>goblin"), true);
+  assert.deepEqual(h.ringLog(), []);
 });
 
-test("a turn change during a handoff cancels it and collapses the kept reticle", () => {
+test("a turn change during a hand-off cancels it and collapses the kept reticle", () => {
   const { h, line } = handoffScenario({ calm: false });
   const [pending] = h.liveTimers();
   assert.ok(pending);
@@ -465,10 +559,32 @@ test("a turn change during a handoff cancels it and collapses the kept reticle",
   assert.equal(pending.cancelled, true);
   assert.equal(line.leaving, true);
   h.advance(5000);
-  assert.equal(h.events(line).some(entry => entry.event === "relaunch"), false, "a stale handoff never launches");
+  assert.equal(h.events(line).some(entry => entry.event === "relaunch"), false, "a stale hand-off never launches");
+  assert.equal(h.rings.some(ring => ring.kind === "rise"), false);
 });
 
-test("a second handoff during the beat carries the reticle on to the next token", () => {
+test("re-sorting the tracker during a hand-off keeps its beat", () => {
+  const { h, line, handedOffAt } = handoffScenario({ calm: false });
+  const [pending] = h.liveTimers();
+  const hold = holdFor(h.motion, false);
+  h.advance(100);
+
+  // A combatant is inserted above the active one: the turn index moves, the acting token does not.
+  h.combat.turn = 7;
+  h.emit("updateCombat", h.combat, { turn: 7 });
+  h.flush();
+  assert.equal(pending.cancelled, false, "the pending hand-off survives");
+  assert.equal(line.sourceId, "pc");
+  assert.equal(h.events(line).some(entry => entry.event === "relaunch"), false, "the waiting line does not jump the beat");
+
+  h.advance(hold - 101);
+  assert.equal(h.events(line).some(entry => entry.event === "relaunch"), false);
+  h.advance(1);
+  const relaunch = h.events(line).find(entry => entry.event === "relaunch");
+  assert.equal(relaunch.at, handedOffAt + hold);
+});
+
+test("a second hand-off during the beat carries the reticle on to the next token", () => {
   const { h, line, seri } = handoffScenario({ calm: false });
   const familiar = h.token("familiar", [seri]);
   h.advance(100);
@@ -479,16 +595,17 @@ test("a second handoff during the beat carries the reticle on to the next token"
   h.advance(5000);
   assert.equal(line.sourceId, "familiar");
   assert.equal(h.shown("familiar>goblin"), true);
+  assert.equal(h.rings.filter(ring => ring.kind === "rise").length, 1, "one rise, from where the lines finally launch");
 });
 
-test("a canvas teardown cancels a pending handoff", () => {
+test("a canvas teardown cancels a pending hand-off", () => {
   const { h } = handoffScenario({ calm: false });
   const [pending] = h.liveTimers();
   h.emit("canvasTearDown");
   assert.equal(pending.cancelled, true);
 });
 
-/** The real TargetLine against a recording anime.js and a recording PIXI.Graphics. */
+/** The real TargetLine and OriginRing against a recording anime.js and a recording PIXI.Graphics. */
 function loadTargetLine() {
   const animations = [];
   class Graphics {
@@ -570,6 +687,7 @@ function loadTargetLine() {
     asScript(read("../scripts/targeting/target-geometry.js")),
     asScript(read("../scripts/targeting/target-line.js")),
     "globalThis.TargetLine = TargetLine;",
+    "globalThis.OriginRing = OriginRing;",
     "globalThis.MOTION = TARGET_LINE_MOTION;",
     "globalThis.INK = INK;",
     "globalThis.HANDOFF_ALPHA = RETICLE_HANDOFF_ALPHA;"
@@ -577,6 +695,8 @@ function loadTargetLine() {
   const container = { addChild: child => child };
   return {
     animations,
+    container,
+    OriginRing: context.OriginRing,
     motion: context.MOTION,
     INK: context.INK,
     HANDOFF_ALPHA: context.HANDOFF_ALPHA,
@@ -589,7 +709,9 @@ function loadTargetLine() {
   };
 }
 
-test("TargetLine launches and collapses on the shared clock", () => {
+const token = (x, y, size = 100) => ({ document: {}, center: { x, y }, w: size, h: size });
+
+test("TargetLine launches and collapses on the clock it reports", () => {
   const t = loadTargetLine();
   const motion = t.motion;
   const line = t.make();
@@ -601,9 +723,14 @@ test("TargetLine launches and collapses on the shared clock", () => {
   mark = t.animations.length;
   line.hide();
   const hide = t.since(mark);
-  assert.equal(t.finish(hide), Math.max(motion.retractMs, motion.reticleCollapseMs));
+  assert.equal(t.finish(hide), line.retractMs, "retractMs is how long hide() takes from full reach");
+  assert.equal(line.beatMs, motion.handoffBeatMs);
   assert.equal(t.last(hide, "ringAlpha").ringAlpha, 0, "a removed target's reticle collapses");
   assert.ok(hide.some(animation => animation.params.onComplete), "hide removes the line when done");
+  const head = t.last(hide, "headOut");
+  assert.equal(head.headOut, 0, "the head fades out on retract");
+  assert.equal(head.duration, motion.headFadeOutMs);
+  assert.ok(motion.headFadeOutMs <= 0.15 * motion.retractMs, "within the first 15% of the retract");
 
   const calm = t.make({ calm: true });
   mark = t.animations.length;
@@ -611,7 +738,9 @@ test("TargetLine launches and collapses on the shared clock", () => {
   assert.equal(t.finish(t.since(mark)), motion.calmFadeInMs);
   mark = t.animations.length;
   calm.hide();
-  assert.equal(t.finish(t.since(mark)), motion.calmFadeOutMs);
+  assert.equal(t.finish(t.since(mark)), calm.retractMs);
+  assert.equal(calm.retractMs, motion.calmFadeOutMs);
+  assert.equal(calm.beatMs, motion.calmHandoffBeatMs);
 });
 
 test("TargetLine retarget keeps the reticle at 45% with loops frozen, then relaunches from the new source", () => {
@@ -622,30 +751,38 @@ test("TargetLine retarget keeps the reticle at 45% with loops frozen, then relau
   assert.equal(loops.length, 3, "sweep, spin and pulse");
   line.show();
   Object.assign(line.state, { reach: 1, ringAlpha: 1, ringScale: 1 });
+  assert.equal(line.canHandOff("b", "c"), true);
+  assert.equal(line.canHandOff("elsewhere", "c"), false, "only a line on the same target is handed off");
+  assert.equal(line.canHandOff("b", "a"), false, "a line already drawn from that token is not handed to it");
 
   let mark = t.animations.length;
   line.retarget("c");
   const retract = t.since(mark);
   assert.equal(line.sourceId, "a", "the body retracts into the old source");
+  assert.equal(line.isDrawnFrom("a"), true);
+  assert.equal(line.origin, "c");
+  assert.equal(line.canHandOff("b", "c"), false);
   assert.equal(line.leaving, false);
   assert.equal(t.HANDOFF_ALPHA, 0.45);
   assert.equal(t.last(retract, "ringAlpha").ringAlpha, t.HANDOFF_ALPHA);
   assert.equal(t.last(retract, "reach").reach, 0);
-  assert.equal(t.finish(retract), motion.retractMs, "retract, including the origin sink, fits the controller's wait");
-  assert.ok(retract.some(animation => "sink" in animation.params), "a ring sinks into the old source");
+  assert.equal(t.last(retract, "headOut").duration, motion.headFadeOutMs);
+  assert.equal(t.finish(retract), line.retractMs, "the retract fits the controller's wait");
   assert.ok(retract.every(animation => !animation.params.onComplete), "nothing removes a retargeted line");
-  assert.ok(loops.every(loop => loop.paused), "loops freeze through the handoff");
+  assert.ok(loops.every(loop => loop.paused), "loops freeze through the hand-off");
+  assert.equal(t.animations.some(animation => "sink" in animation.params || "rise" in animation.params), false,
+    "origin rings belong to the controller, one per token");
 
   line.state.reach = 0;
   mark = t.animations.length;
   line.show();
   const relaunch = t.since(mark);
   assert.equal(line.sourceId, "c");
+  assert.equal(line.state.headOut, 1);
   assert.ok(loops.every(loop => !loop.paused), "loops resume on relaunch");
   assert.equal(t.last(relaunch, "reach").duration, motion.launchMs);
   assert.equal(t.last(relaunch, "ringAlpha").ringAlpha, 1);
   assert.equal(t.finish(relaunch), motion.launchMs);
-  assert.ok(relaunch.some(animation => "rise" in animation.params && animation.params.duration === motion.originRiseMs));
 
   // The target changed during the beat instead: the kept reticle collapses.
   const again = t.make();
@@ -655,6 +792,7 @@ test("TargetLine retarget keeps the reticle at 45% with loops frozen, then relau
   again.hide();
   assert.equal(t.last(t.since(mark), "ringAlpha").ringAlpha, 0);
   assert.equal(again.nextSourceId, null);
+  assert.equal(again.canHandOff("b", "d"), false, "a leaving line is not handed off");
 });
 
 test("TargetLine retarget in calm motion fades the body and dims the reticle", () => {
@@ -668,8 +806,7 @@ test("TargetLine retarget in calm motion fades the body and dims the reticle", (
   const fade = t.since(mark);
   assert.equal(t.last(fade, "body").body, 0);
   assert.equal(t.last(fade, "ringAlpha").ringAlpha, t.HANDOFF_ALPHA);
-  assert.equal(t.finish(fade), motion.calmFadeOutMs);
-  assert.equal(fade.some(animation => "sink" in animation.params), false, "no origin cue in calm");
+  assert.equal(t.finish(fade), line.retractMs);
 
   mark = t.animations.length;
   line.show();
@@ -679,13 +816,46 @@ test("TargetLine retarget in calm motion fades the body and dims the reticle", (
   assert.equal(t.finish(back), motion.calmFadeInMs);
 });
 
+test("an origin ring sinks over the end of the retract, rises at the relaunch, and removes itself", () => {
+  const t = loadTargetLine();
+  const motion = t.motion;
+  const gone = [];
+  let mark = t.animations.length;
+  const sink = new t.OriginRing({ layer: t.container, tokenId: "a", kind: "sink", color: 0x4db8ff, onGone: ring => gone.push(ring) });
+  const [sinking] = t.since(mark);
+  assert.equal(sinking.params.delay, motion.retractMs - motion.originSinkMs);
+  assert.equal(sinking.params.delay + sinking.params.duration, motion.retractMs, "it has sunk as the body arrives");
+  sinking.params.onComplete();
+  assert.equal(gone[0], sink);
+  assert.equal(sink.destroyed, true);
+
+  mark = t.animations.length;
+  const rise = new t.OriginRing({ layer: t.container, tokenId: "b", kind: "rise", color: 0x4db8ff });
+  const [rising] = t.since(mark);
+  assert.equal(rising.params.delay ?? 0, 0);
+  assert.equal(rising.params.duration, motion.originRiseMs);
+
+  rise.state.progress = 0.5;
+  rise.render({ source: token(100, 100), scale: 2, resolution: 1.5 });
+  const circles = rise.graphics.ops.filter(op => op.op === "circle");
+  assert.equal(circles.length, 1, "one hairline ring");
+  assert.deepEqual([circles[0].x, circles[0].y], [100, 100]);
+  assert.ok(circles[0].radius > 0.9 * 50 && circles[0].radius < 1.5 * 50);
+  const [stroke] = rise.graphics.ops.filter(op => op.op === "line");
+  assert.ok(Math.abs(stroke.width - (1 / 3)) < 1e-9, "a device-pixel hairline");
+  assert.notEqual(stroke.color, 0x4db8ff, "drawn in the bright tint of the line colour");
+
+  rise.state.progress = 1;
+  rise.render({ source: token(100, 100), scale: 2, resolution: 1.5 });
+  assert.equal(rise.graphics.ops.length, 0, "nothing once it has finished");
+});
+
 test("the Etched Bow draws device-pixel hairlines in the line's own colours", () => {
   const t = loadTargetLine();
   const color = 0x4db8ff;
   const line = t.make({ color });
   line.show();
   Object.assign(line.state, { reach: 1, body: 1, ringAlpha: 1, ringScale: 1, pulse: 0.5, sweep: 0.5, spin: 1 });
-  const token = (x, y, size = 100) => ({ document: {}, center: { x, y }, w: size, h: size });
   const render = (scale, resolution) => line.render({
     source: token(50, 50), target: token(550, 50), scale, gridSize: 100, resolution
   });
@@ -693,6 +863,7 @@ test("the Etched Bow draws device-pixel hairlines in the line's own colours", ()
   const halo = line.haloGraphics;
   const core = line.coreGraphics;
   const glint = line.glintGraphics;
+  const headDrawn = () => core.ops.some(op => op.op === "fill" && op.color === color);
 
   render(2, 1.5);
   const hairline = 1 / (2 * 1.5);
@@ -712,7 +883,7 @@ test("the Etched Bow draws device-pixel hairlines in the line's own colours", ()
   assert.equal(glint.blendMode, 1, "the sweep adds light");
   assert.notEqual(core.blendMode, 1, "the etched rim must not be additive, or INK draws nothing");
   assert.ok(strokes(glint).length > 0, "the light sweep runs while the line holds");
-  assert.ok(core.ops.some(op => op.op === "fill" && op.color === color), "the head wedge is drawn");
+  assert.ok(headDrawn(), "the head wedge is drawn");
 
   const path = line.path;
   render(0.5, 1);
@@ -722,6 +893,12 @@ test("the Etched Bow draws device-pixel hairlines in the line's own colours", ()
   line.state.reach = 0.5;
   render(1, 1);
   assert.equal(strokes(glint).length, 0, "no sweep on a body that is moving");
+
+  // Retracting: the head goes in the first moments of the retract, long before the body does.
+  line.hide();
+  Object.assign(line.state, { reach: 0.95, headOut: 0 });
+  render(1, 1);
+  assert.equal(headDrawn(), false, "no head on a retracting line that still has most of its reach");
 
   const calm = t.make({ calm: true, color });
   calm.show();
