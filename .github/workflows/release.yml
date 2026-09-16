@@ -69,6 +69,7 @@ jobs:
         run: |
           zip -r gluniverse-stream.zip \
             module.json \
+            assets \
             scripts \
             styles \
             templates \
