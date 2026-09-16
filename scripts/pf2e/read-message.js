@@ -184,14 +184,25 @@ function actorOf(derived) {
   const isNpc = !!derived.authorIsGM && !actor.hasPlayerOwner;
   const hiddenName = isNpc && !!derived.nameVisibilitySetting && token.playersCanSeeName === false;
   const tokenImg = usable(token.textureSrc);
-  const img = artFor(actor.img, token.textureSrc, isNpc);
+  const own = artFor(actor.img, token.textureSrc, isNpc);
+  // A GM roll with nothing of its own to show falls back to the world's default roll art.
+  const fallback = own ? null : defaultArtOf(derived.authorIsGM ? derived.defaultArt : null);
+  const img = own ?? fallback?.src ?? null;
   return {
     name: hiddenName ? null : token.name ?? actor.name ?? "",
     isNpc,
     img,
     imgKind: (img ? img === tokenImg : isNpc) ? "token" : "portrait",
-    focus: focusFor(actor.focusOverrides, img)
+    focus: fallback ? fallback.focus : focusFor(actor.focusOverrides, img)
   };
+}
+
+/** The world's picture for GM rolls with no art, with the framing the GM set for it. */
+function defaultArtOf(defaultArt) {
+  const src = typeof defaultArt?.src === "string" ? defaultArt.src.trim() : "";
+  if (!src) return null;
+  const focus = defaultArt.focus;
+  return { src, focus: isFocus(focus) ? { x: focus.x, y: focus.y, w: focus.w } : null };
 }
 
 /** A GM's framing for this exact image, if one was set. */

@@ -181,6 +181,35 @@ describe("rules", () => {
     assert.equal(readMessage(snapshot).actor.focus, null);
   });
 
+  test("a GM roll with no art of its own falls back to the world's default roll art", () => {
+    const snapshot = structuredClone(captures.gm.messages.find(m => m.label === "gm-npc-strike"));
+    assert.equal(readMessage(snapshot).actor.img, null, "the fixture's creature is still on a default icon");
+    snapshot.derived.defaultArt = { src: "worlds/stream/gm-roll.webp", focus: { x: 0.2, y: 0.05, w: 0.5 } };
+    const card = readMessage(snapshot);
+    assert.equal(card.actor.img, "worlds/stream/gm-roll.webp");
+    assert.equal(card.actor.imgKind, "portrait");
+    assert.deepEqual(card.actor.focus, { x: 0.2, y: 0.05, w: 0.5 });
+
+    snapshot.derived.defaultArt = { src: "worlds/stream/gm-roll.webp", focus: { x: "bad", y: 0, w: 0.5 } };
+    assert.equal(readMessage(snapshot).actor.focus, null, "an unusable framing leaves the picture to face detection");
+  });
+
+  test("the default roll art replaces nothing: not a roll's own art, not a player's roll", () => {
+    const defaultArt = { src: "worlds/stream/gm-roll.webp", focus: null };
+    const withArt = structuredClone(captures.gm.messages.find(m => m.label === "strike-map5"));
+    withArt.derived.defaultArt = defaultArt;
+    assert.equal(readMessage(withArt).actor.img, "systems/pf2e/icons/iconics/portraits/kyra.webp");
+
+    const fromPlayer = structuredClone(captures.gm.messages.find(m => m.label === "gm-npc-strike"));
+    fromPlayer.derived.authorIsGM = false;
+    fromPlayer.derived.defaultArt = defaultArt;
+    assert.equal(readMessage(fromPlayer).actor.img, null);
+
+    const unset = structuredClone(captures.gm.messages.find(m => m.label === "gm-npc-strike"));
+    unset.derived.defaultArt = { src: "", focus: null };
+    assert.equal(readMessage(unset).actor.img, null, "no picture set leaves the monogram in place");
+  });
+
   test("visibility: public, own blind, and everything else hidden", () => {
     assert.equal(visibilityOf({ blind: false, whisper: [] }, { authorIsGM: true }), "public");
     assert.equal(visibilityOf({ blind: true, whisper: ["gm"] }, { authorIsGM: false }), "ownBlind");

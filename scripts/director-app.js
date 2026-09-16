@@ -11,6 +11,7 @@ import {
 import {
   getCameraSettings,
   getChatSettings,
+  getDefaultRollArt,
   getDialogSettings,
   getSetting,
   getTargetingSettings,
@@ -102,6 +103,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const camera = getCameraSettings();
     const chat = getChatSettings();
     const dialog = getDialogSettings();
+    const defaultRollArt = getDefaultRollArt();
     const targeting = getTargetingSettings();
     const uiRules = getUiRules();
     const status = getStreamClientStatus();
@@ -141,6 +143,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       spotlightSelected: camera.combatMode === CAMERA_MODES.spotlight,
       chat,
       cardScale: { ...CARD_SCALE_RANGE, percent: Math.round(chat.cardScale * 100) },
+      defaultRollArt,
       dialog,
       targeting,
       tokenRows: services.tokenTracking?.getTokenRows() ?? [],
@@ -233,6 +236,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       return services.uiDetector?.setElementZIndex(target.dataset.ruleId, target.value);
     }
     if (name === "streamUserId") return this.#setAndRender("streamUserId", target.value);
+    if (name === "defaultRollArt.src") return this.#setDefaultRollArt(target.value);
     if (name === "trustedDirectorUserIds") {
       const ids = Array.from(this.element.querySelectorAll("input[name='trustedDirectorUserIds']:checked")).map(input => input.value);
       return this.#setAndRender("trustedDirectorUserIds", ids);
@@ -259,6 +263,10 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         return this.#setAutoStart(false);
       case "portrait-framing":
         return openPortraitFramingApp();
+      case "browse-default-roll-art":
+        return this.#browseDefaultRollArt();
+      case "frame-default-roll-art":
+        return openPortraitFramingApp({ defaultArt: true });
       case "reframe":
         requestStreamClientStatus();
         return services.camera?.requestReframe({ force: true });
@@ -276,6 +284,23 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.#captureScroll();
         return services.uiDetector?.removeSelectorRule(button.dataset.ruleId);
     }
+  }
+
+  /** Opens Foundry's file picker on the picture GM rolls fall back to. */
+  async #browseDefaultRollArt() {
+    const Picker = foundry.applications?.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
+    if (!Picker) return;
+    const current = this.element.querySelector("input[name='defaultRollArt.src']")?.value ?? "";
+    return new Picker({ type: "image", current, callback: path => this.#setDefaultRollArt(path) }).browse();
+  }
+
+  /** A new picture invalidates the framing the old one was given, so the framing starts again. */
+  async #setDefaultRollArt(src) {
+    const next = String(src ?? "").trim();
+    const current = getDefaultRollArt();
+    if (next === current.src) return;
+    this.#captureScroll();
+    await setSetting("defaultRollArt", { src: next, focus: null });
   }
 
   async #setAndRender(key, value) {

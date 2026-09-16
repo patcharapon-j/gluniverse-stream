@@ -76,6 +76,16 @@ export const DEFAULT_CHAT_SETTINGS = {
   cardScale: 0.5
 };
 
+/**
+ * The picture a GM's own roll cards fall back to. A GM roll with no art of its own — a plain roll with
+ * no token, or a creature still on a default icon — shows this instead of the monogram. `focus` is the
+ * GM's framing for that picture (`{x, y, w}` in image widths); null frames it automatically.
+ */
+export const DEFAULT_ROLL_ART = {
+  src: "",
+  focus: null
+};
+
 /** The range the Director can drag `chatSettings.cardScale` across. */
 export const CARD_SCALE_RANGE = { min: 0.15, max: 3, step: 0.05 };
 
