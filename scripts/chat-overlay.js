@@ -34,9 +34,18 @@ export class ChatOverlay {
       if (key === "chatSettings") this.applySettings();
     });
     Hooks.on(`${MODULE_ID}.streamModeChanged`, active => {
-      if (active) this.applySettings();
-      else this.clear();
+      if (active) {
+        this.applySettings();
+        if (usesRollCards()) this.feed.prescan();
+      } else this.clear();
     });
+    // New combatants are the next people to roll: frame their art ahead of time.
+    const prescan = () => {
+      if (this.streamMode.active && usesRollCards()) this.feed.prescan();
+    };
+    Hooks.on("createCombatant", prescan);
+    Hooks.on("combatStart", prescan);
+    Hooks.on("canvasReady", prescan);
   }
 
   handleRenderedMessage(message, html) {

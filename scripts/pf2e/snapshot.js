@@ -5,6 +5,8 @@
  * added here must be added there (and recaptured) before the reader relies on it.
  */
 
+import { MODULE_ID } from "../constants.js";
+
 export function snapshotMessage(message) {
   const source = message._source ?? message.toObject?.() ?? {};
   return {
@@ -52,7 +54,13 @@ function summarizeRoll(roll) {
 
 function actorOf(actor) {
   if (!actor) return null;
-  return { name: actor.name, type: actor.type, img: actor.img, hasPlayerOwner: !!actor.hasPlayerOwner };
+  return {
+    name: actor.name,
+    type: actor.type,
+    img: actor.img,
+    hasPlayerOwner: !!actor.hasPlayerOwner,
+    focusOverrides: actor.getFlag?.(MODULE_ID, "portraitFocus") ?? []
+  };
 }
 
 function tokenOf(token) {

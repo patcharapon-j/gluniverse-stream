@@ -1,7 +1,8 @@
 import { RollCard } from "../cards/roll-card.js";
 import { waitForDiceAnimation } from "../dice-wait.js";
 import { getChatSettings } from "../settings.js";
-import { readMessage } from "./read-message.js";
+import { portraitFramer } from "../framing/portrait-framer.js";
+import { artFor, readMessage } from "./read-message.js";
 import { snapshotMessage } from "./snapshot.js";
 
 /** Damage merges into the card its attack or cast made, if that card is this recent and still up. */
@@ -95,7 +96,7 @@ export class RollCardFeed {
   show(messageId, model, rerollKey) {
     const overlay = this.overlay;
     overlay.applySettings();
-    const card = new RollCard(model, { label: localizeLabel });
+    const card = new RollCard(model, { label: localizeLabel, framer: portraitFramer });
     const record = {
       element: card.element,
       rollCard: card,
@@ -165,6 +166,22 @@ export class RollCardFeed {
       if (this.byMessageId.get(id) === record) this.byMessageId.delete(id);
     }
     if (record.rerollKey && this.awaitingReroll.get(record.rerollKey) === record) this.awaitingReroll.delete(record.rerollKey);
+  }
+
+  /**
+   * Frames the art of everyone likely to roll before they do: the party, each player's character and
+   * the current combatants. Uses the same art choice as the cards.
+   */
+  prescan() {
+    const sources = [];
+    const add = (actor, token, preferToken) => sources.push(artFor(actor?.img, token?.texture?.src, preferToken));
+    for (const user of game.users ?? []) if (user.character) add(user.character, user.character.prototypeToken, false);
+    for (const member of game.actors?.party?.members ?? []) add(member, member.prototypeToken, false);
+    for (const combatant of game.combat?.combatants ?? []) {
+      const actor = combatant.actor;
+      add(actor, combatant.token, !actor?.hasPlayerOwner);
+    }
+    portraitFramer.prescan(sources.filter(Boolean));
   }
 
   clear() {

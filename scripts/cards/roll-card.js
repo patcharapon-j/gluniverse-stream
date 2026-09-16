@@ -1,5 +1,6 @@
 import { animate, cubicBezier, remove } from "../motion/engine.js";
 import { crackRenderer } from "../fx/crack-renderer.js";
+import { isFocus, placement } from "../framing/focus-math.js";
 
 /**
  * The PF2e roll card ("Hairline"), as approved in the design mockup.
@@ -136,9 +137,11 @@ export class RollCard {
    * @param {object} model    RollCardModel from the PF2e reader.
    * @param {object} [options]
    * @param {(key: string) => string} [options.label]  Localises a label key; defaults to English.
+   * @param {{peek: Function, request: Function}} [options.framer]  Finds where to frame the art.
    */
-  constructor(model, { label } = {}) {
+  constructor(model, { label, framer } = {}) {
     this.label = (key) => label?.(key) ?? DEFAULT_LABELS[key] ?? key;
+    this.framer = framer ?? null;
     this.model = model;
     this.pending = false;
     this.version = 0;
@@ -152,13 +155,15 @@ export class RollCard {
   buildShell() {
     const root = el("div", "glus-rc");
     const main = el("div", "glus-rc-main");
+    const frame = el("div", "glus-rc-art-frame");
     const art = el("img", "glus-rc-art");
     art.alt = "";
     art.decoding = "async";
+    frame.append(art);
     const text = el("div", "glus-rc-text");
     text.append(el("div", "glus-rc-player"), el("div", "glus-rc-name"), el("div", "glus-rc-action"));
     main.append(
-      art,
+      frame,
       el("span", "glus-rc-monogram"),
       el("span", "glus-rc-spacer"),
       text,
@@ -200,7 +205,8 @@ export class RollCard {
     const img = model.actor?.img;
     if (img && art.getAttribute("src") !== img) art.src = img;
     else if (!img) art.removeAttribute("src");
-    art.dataset.kind = model.actor?.imgKind === "token" ? "token" : "portrait";
+    this.q(".glus-rc-art-frame").dataset.kind = model.actor?.imgKind === "token" ? "token" : "portrait";
+    this.frameArt(img, model.actor?.focus);
     // No usable art (a default NPC icon, a hidden name): a faint initial holds the portrait's place.
     root.toggleAttribute("data-no-art", !img);
     this.q(".glus-rc-monogram").textContent = (model.actor?.name ?? "?").trim().charAt(0).toUpperCase() || "?";
@@ -251,6 +257,36 @@ export class RollCard {
       result.append(degree, el("div", "glus-rc-total", "0"));
       if (model.damage.crit) root.dataset.tone = "crit-success";
     }
+  }
+
+  /**
+   * Frames the art: a GM's focus point first, then a detected one. An image not analysed yet shows the
+   * default crop and glides to its framing when the analysis lands.
+   */
+  frameArt(img, manual) {
+    this.artSrc = img ?? null;
+    if (!img) return this.applyFocus(null);
+    if (isFocus(manual)) return this.applyFocus(manual);
+    const known = this.framer?.peek(img);
+    if (known !== undefined) return this.applyFocus(known);
+    this.applyFocus(null);
+    this.framer?.request(img).then((focus) => {
+      if (!this.destroyed && this.artSrc === img && !isFocus(this.model.actor?.focus)) this.applyFocus(focus);
+    });
+  }
+
+  applyFocus(focus) {
+    const frame = this.q(".glus-rc-art-frame");
+    const art = this.q(".glus-rc-art");
+    if (!isFocus(focus)) {
+      frame.removeAttribute("data-framed");
+      return;
+    }
+    const { scale, left, top } = placement(focus);
+    art.style.setProperty("--glus-rc-art-scale", scale);
+    art.style.setProperty("--glus-rc-art-left", left);
+    art.style.setProperty("--glus-rc-art-top", top);
+    frame.setAttribute("data-framed", "");
   }
 
   buildDegree(roll) {
@@ -350,7 +386,7 @@ export class RollCard {
       ],
       { duration: 480, easing: CSS_UNFOLD, fill: "none" }
     );
-    tween(this.q(".glus-rc-art"), {
+    tween(this.q(".glus-rc-art-frame"), {
       opacity: [0, 1],
       translateX: ["-18%", "0%"],
       scale: [1.12, 1],

@@ -51,18 +51,21 @@
   background: color-mix(in srgb, var(--gl-violet) 14%, color-mix(in srgb, var(--gl-surface) 88%, transparent));
 }
 
-/* Portrait: cropped, never stretched, feathered into the strip on the right and at top and bottom. */
-.glus-rc-art {
+/*
+ * Portrait: cropped, never stretched, feathered into the strip on the right and at top and bottom.
+ * The frame owns the feather and the clipping; the image moves inside it. Unframed, the image covers
+ * the frame near its top. Framed (a detected face or a GM's focus point), the image is sized and
+ * shifted in frame widths by --glus-rc-art-scale/-left/-top. State sits on the frame as data-kind and
+ * data-framed (not :has(), which older OBS browser sources lack).
+ */
+.glus-rc-art-frame {
+  --glus-rc-art-w: calc(8.2 * var(--u));
   position: absolute;
   left: 0;
   top: 0;
   height: 100%;
-  width: calc(8.2 * var(--u));
-  max-width: none;
-  border: 0;
-  object-fit: cover;
-  object-position: 50% 14%;
-  display: block;
+  width: var(--glus-rc-art-w);
+  overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, #000 28%, rgb(0 0 0 / 0.55) 55%, transparent 100%),
     linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
   -webkit-mask-composite: source-in;
@@ -70,7 +73,29 @@
     linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
   mask-composite: intersect;
 }
-.glus-rc[data-no-art] .glus-rc-art { display: none; }
+.glus-rc-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  object-fit: cover;
+  object-position: 50% 14%;
+  display: block;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1), left 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    top 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glus-rc-art-frame[data-framed] .glus-rc-art {
+  height: auto;
+  width: calc(var(--glus-rc-art-w) * var(--glus-rc-art-scale));
+  left: calc(var(--glus-rc-art-w) * var(--glus-rc-art-left));
+  top: calc(var(--glus-rc-art-w) * var(--glus-rc-art-top));
+  object-fit: fill;
+}
+.glus-rc[data-no-art] .glus-rc-art-frame { display: none; }
 .glus-rc-monogram { display: none; }
 .glus-rc[data-no-art] .glus-rc-monogram {
   position: absolute;
@@ -88,10 +113,8 @@
   transition: color 0.35s;
 }
 
-.glus-rc-art[data-kind="token"] {
-  object-position: 50% 50%;
-  width: calc(7.2 * var(--u));
-}
+.glus-rc-art-frame[data-kind="token"]:not([data-framed]) { --glus-rc-art-w: calc(7.2 * var(--u)); }
+.glus-rc-art-frame[data-kind="token"]:not([data-framed]) .glus-rc-art { object-position: 50% 50%; }
 
 .glus-rc-text,
 .glus-rc-result {

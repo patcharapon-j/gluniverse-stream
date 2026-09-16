@@ -168,6 +168,19 @@ describe("rules", () => {
     assert.equal(card.target.name, "Kyra", "a player-owned target keeps its name");
   });
 
+  test("a GM's focus point applies only to the image it was set for", () => {
+    const snapshot = structuredClone(captures.gm.messages.find(m => m.label === "strike-map5"));
+    const img = "systems/pf2e/icons/iconics/portraits/kyra.webp";
+    snapshot.derived.actor.focusOverrides = [
+      { src: "old/art.webp", x: 0.9, y: 0.9, w: 0.1 },
+      { src: img, x: 0.1, y: 0.05, w: 0.6 },
+      { src: img, x: "bad", y: 0, w: 0.5 }
+    ];
+    assert.deepEqual(readMessage(snapshot).actor.focus, { x: 0.1, y: 0.05, w: 0.6 });
+    snapshot.derived.actor.focusOverrides = [{ src: "old/art.webp", x: 0.1, y: 0.1, w: 0.5 }];
+    assert.equal(readMessage(snapshot).actor.focus, null);
+  });
+
   test("visibility: public, own blind, and everything else hidden", () => {
     assert.equal(visibilityOf({ blind: false, whisper: [] }, { authorIsGM: true }), "public");
     assert.equal(visibilityOf({ blind: true, whisper: ["gm"] }, { authorIsGM: false }), "ownBlind");

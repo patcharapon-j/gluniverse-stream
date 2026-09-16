@@ -5,6 +5,8 @@
  * fixtures in tests/fixtures/pf2e were captured in) and decides what, if anything, the stream shows.
  */
 
+import { isFocus } from "../framing/focus-math.js";
+
 export const DEGREES = ["criticalFailure", "failure", "success", "criticalSuccess"];
 
 const CHECK_TYPES = new Set([
@@ -182,13 +184,21 @@ function actorOf(derived) {
   const isNpc = !!derived.authorIsGM && !actor.hasPlayerOwner;
   const hiddenName = isNpc && !!derived.nameVisibilitySetting && token.playersCanSeeName === false;
   const tokenImg = usable(token.textureSrc);
-  const portraitImg = usable(actor.img);
+  const img = artFor(actor.img, token.textureSrc, isNpc);
   return {
     name: hiddenName ? null : token.name ?? actor.name ?? "",
     isNpc,
-    img: isNpc ? tokenImg ?? portraitImg : portraitImg ?? tokenImg,
-    imgKind: isNpc ? "token" : "portrait"
+    img,
+    imgKind: (img ? img === tokenImg : isNpc) ? "token" : "portrait",
+    focus: focusFor(actor.focusOverrides, img)
   };
+}
+
+/** A GM's framing for this exact image, if one was set. */
+function focusFor(overrides, img) {
+  if (!img || !Array.isArray(overrides)) return null;
+  const match = overrides.find(o => o?.src === img && isFocus(o));
+  return match ? { x: match.x, y: match.y, w: match.w } : null;
 }
 
 /** PF2e records the roller as the target of their own saves and checks. */
@@ -203,6 +213,13 @@ function targetOf(derived) {
   if (!target) return null;
   const hidden = !!derived.nameVisibilitySetting && target.playersCanSeeName === false;
   return { name: hidden ? null : target.tokenName ?? target.actorName ?? null };
+}
+
+/** The art a card shows: creatures lead with their token, characters with their portrait. Default icons never count. */
+export function artFor(actorImg, tokenImg, preferToken) {
+  const portrait = usable(actorImg);
+  const token = usable(tokenImg);
+  return preferToken ? token ?? portrait : portrait ?? token;
 }
 
 function usable(src) {
@@ -230,7 +247,7 @@ function decodeEntities(text) {
  * @property {string|null} originKey
  * @property {boolean} isReroll
  * @property {"public"|"ownBlind"} visibility
- * @property {{name: string|null, isNpc: boolean, img: string|null, imgKind: "token"|"portrait"}} actor
+ * @property {{name: string|null, isNpc: boolean, img: string|null, imgKind: "token"|"portrait", focus: {x: number, y: number, w: number}|null}} actor
  * @property {{name: string}|null} player
  * @property {{name: string|null}|null} target
  * @property {{label: string, sub: string|null, map: number, cost?: {type: string, value: number|null}|null}|null} action
