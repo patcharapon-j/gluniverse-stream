@@ -61,7 +61,7 @@
   max-width: none;
   border: 0;
   object-fit: cover;
-  object-position: 50% 36%;
+  object-position: 50% 14%;
   display: block;
   -webkit-mask-image: linear-gradient(90deg, #000 28%, rgb(0 0 0 / 0.55) 55%, transparent 100%),
     linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
@@ -70,6 +70,24 @@
     linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
   mask-composite: intersect;
 }
+.glus-rc[data-no-art] .glus-rc-art { display: none; }
+.glus-rc-monogram { display: none; }
+.glus-rc[data-no-art] .glus-rc-monogram {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(5 * var(--u));
+  display: grid;
+  place-items: center;
+  font-family: var(--gl-display);
+  font-weight: 700;
+  font-size: calc(2.2 * var(--u));
+  color: color-mix(in srgb, var(--glus-rc-tone) 45%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--glus-rc-tone) 14%, transparent), transparent);
+  transition: color 0.35s;
+}
+
 .glus-rc-art[data-kind="token"] {
   object-position: 50% 50%;
   width: calc(7.2 * var(--u));

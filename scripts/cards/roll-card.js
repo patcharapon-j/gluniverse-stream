@@ -67,6 +67,11 @@ const DEFAULT_LABELS = {
   SpellAttack: "Spell attack",
   Versus: "vs",
   CastsSpell: "Casts a spell",
+  UsesAction: "Takes an action",
+  Action: "Action",
+  Actions: "Actions",
+  Reaction: "Reaction",
+  FreeAction: "Free action",
   Cantrip: "Cantrip",
   Rank: "Rank",
   Basic: "Basic",
@@ -154,6 +159,7 @@ export class RollCard {
     text.append(el("div", "glus-rc-player"), el("div", "glus-rc-name"), el("div", "glus-rc-action"));
     main.append(
       art,
+      el("span", "glus-rc-monogram"),
       el("span", "glus-rc-spacer"),
       text,
       el("div", "glus-rc-result"),
@@ -191,8 +197,13 @@ export class RollCard {
     root.toggleAttribute("data-pending", this.pending);
 
     const art = this.q(".glus-rc-art");
-    if (model.actor?.img && art.getAttribute("src") !== model.actor.img) art.src = model.actor.img;
+    const img = model.actor?.img;
+    if (img && art.getAttribute("src") !== img) art.src = img;
+    else if (!img) art.removeAttribute("src");
     art.dataset.kind = model.actor?.imgKind === "token" ? "token" : "portrait";
+    // No usable art (a default NPC icon, a hidden name): a faint initial holds the portrait's place.
+    root.toggleAttribute("data-no-art", !img);
+    this.q(".glus-rc-monogram").textContent = (model.actor?.name ?? "?").trim().charAt(0).toUpperCase() || "?";
 
     const player = this.q(".glus-rc-player");
     const reroll = player.querySelector('[data-chip="reroll"]');
@@ -210,7 +221,8 @@ export class RollCard {
 
     const action = this.q(".glus-rc-action");
     const isCast = model.kind === "cast" && model.spell && !model.roll;
-    const actionLabel = isCast ? this.label("CastsSpell") : model.action?.label ?? "";
+    const isAction = model.kind === "action";
+    const actionLabel = isCast ? this.label("CastsSpell") : isAction ? this.label("UsesAction") : model.action?.label ?? "";
     const actionSub = isCast ? this.castDetail(model.spell) : model.action?.sub;
     const sub = [actionSub, model.target?.name ? `${this.label("Versus")} ${model.target.name}` : null]
       .filter(Boolean)
@@ -223,6 +235,8 @@ export class RollCard {
     result.replaceChildren();
     if (isCast) {
       result.append(this.buildSpell(model.spell));
+    } else if (isAction) {
+      result.append(this.buildAction(model.action));
     } else if (model.roll) {
       result.append(this.buildDegree(model.roll));
       if (Number.isFinite(model.roll.natural)) result.append(this.buildDie(model.roll.natural));
@@ -276,6 +290,21 @@ export class RollCard {
       const bonus = spell.attackBonus >= 0 ? `+${spell.attackBonus}` : String(spell.attackBonus);
       line.append(document.createTextNode(this.label("SpellAttack")), el("b", "glus-rc-big-number", bonus));
     }
+    box.append(line);
+    return box;
+  }
+
+  /** An action posted from a sheet: its name large, its cost underneath. */
+  buildAction(action) {
+    const box = el("div", "glus-rc-spell");
+    box.append(el("span", "glus-rc-spell-name", action?.label ?? ""));
+    const line = el("span", "glus-rc-spell-line");
+    const cost = action?.cost;
+    if (cost?.type === "reaction") line.textContent = this.label("Reaction");
+    else if (cost?.type === "free") line.textContent = this.label("FreeAction");
+    else if (Number.isFinite(cost?.value)) {
+      line.append(el("b", "glus-rc-big-number", cost.value), document.createTextNode(this.label(cost.value === 1 ? "Action" : "Actions")));
+    } else line.textContent = this.label("Action");
     box.append(line);
     return box;
   }
