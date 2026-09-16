@@ -95,7 +95,7 @@ export class PortraitFramer {
 
     const tools = await this.loadTools();
     if (tools?.detector) {
-      const face = pickFace(detectFaces(tools.detector, canvas), width, height);
+      const face = pickFace(await detectFaces(tools.detector, canvas), width, height);
       if (face) return { focus: toFocus(cropForFace(face.box, width, height, ART_ASPECT), width), method: "face" };
     }
     if (tools?.smartcrop) {
@@ -157,8 +157,11 @@ export class PortraitFramer {
   }
 }
 
-/** Whole image, then every zoomed window, mapped back to image pixels. */
-function detectFaces(detector, canvas) {
+/**
+ * Whole image, then every zoomed window, mapped back to image pixels. It yields to the page between
+ * windows: each detection is a few milliseconds of main-thread work, and the stream must not hitch.
+ */
+async function detectFaces(detector, canvas) {
   const found = [];
   const collect = (detections, sx, sy, k) => {
     for (const d of detections) {
@@ -178,8 +181,14 @@ function detectFaces(detector, canvas) {
     ctx.fillRect(0, 0, TILE_PX, TILE_PX);
     ctx.drawImage(canvas, w.x, w.y, w.size, w.size, 0, 0, TILE_PX, TILE_PX);
     collect(detector.detect(tile).detections, w.x, w.y, TILE_PX / w.size);
+    await yieldToPage();
   }
   return found;
+}
+
+function yieldToPage() {
+  if (globalThis.scheduler?.yield) return globalThis.scheduler.yield();
+  return new Promise(resolve => setTimeout(resolve, 0));
 }
 
 function loadImage(src) {
