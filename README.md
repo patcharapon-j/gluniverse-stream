@@ -15,6 +15,7 @@ GLUniverse Stream is a Foundry VTT v13/v14 module for running a clean OBS/browse
 - The camera never blocks or interferes with token movement: it only reacts to committed updates, and it stays off the canvas while a drag or ruler is in progress.
 - Stream-client-side camera visibility checks so fog/hidden-token visibility stays under Foundry's normal client rules.
 - Chat overlay that clones Foundry-rendered chat cards, waits for Dice So Nice/final roll rendering, and avoids duplicate roll cards.
+- PF2e roll cards: in PF2e worlds, the chat overlay shows compact cards instead of cloned chat cards. Each card shows the player, character, check, target, natural d20, DC, total and degree of success. Damage merges under its attack, spells update in place from cast to attack, rerolls rewrite their card, and critical successes and failures crack in gold or red using the GLUniverse Broken-condition shader.
 - Dialog, journal, handout, and image presentation overlay with automatic close timing.
 - Targeted stream UI hiding with optional allow/block rules for floating UI.
 
@@ -71,7 +72,7 @@ During combat, an etched glass arc is drawn from the combatant whose turn it is 
 
 All module animation, from camera flights to chat cards to targeting lines, runs on [anime.js](https://animejs.com). While a scene is loaded it is stepped in time with the canvas render.
 
-Clients that ask for reduced motion (OS/browser setting) or have Foundry's photosensitive mode on get calm versions of the chat cards, dialogs and targeting lines. The stream camera does not change, since it is the directed shot; set **Travel zoom-out** to 1 for a calmer camera.
+Clients that ask for reduced motion (OS/browser setting) or have Foundry's photosensitive mode on get calm versions of the cloned chat cards, dialogs and targeting lines. PF2e roll cards always animate. The stream camera does not change, since it is the directed shot; set **Travel zoom-out** to 1 for a calmer camera.
 
 ## Packaging A Release
 

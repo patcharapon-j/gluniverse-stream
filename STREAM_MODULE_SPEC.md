@@ -272,11 +272,38 @@ Reframing triggers:
 
 - Listen for Foundry's rendered chat HTML on the stream client.
 - Clone the final rendered HTML into the module overlay.
-- Do not rebuild system-specific chat cards.
+- Do not rebuild system-specific chat cards, except for systems with a roll card adapter (PF2e, below).
 - Each card expires independently.
 - If visible cards exceed `maxVisible`, the oldest animates out.
 - Position is one of `top-left`, `top-right`, `bottom-left`, `bottom-right`.
 - `offsetX` and `offsetY` move the overlay in pixels from the selected position.
+
+## PF2e Roll Card
+
+In a PF2e world, the chat overlay does not clone chat cards. It builds a roll card from each new message (`createChatMessage`), and never from chat history re-rendered on load. Plan and decisions: `docs/plans/pf2e-roll-card.md`.
+
+- `scripts/pf2e/snapshot.js` turns the message into a plain snapshot. `scripts/pf2e/read-message.js` (pure, tested against real PF2e 8.4 fixtures in `tests/fixtures/pf2e`) turns that into a card model, or nothing.
+- Shown: d20 checks, spell casts, actions posted from a sheet, and damage rolls. Everything else is hidden.
+- Visibility:
+  - Public messages are shown.
+  - A player's own blind roll is shown with its result, in violet with a Blind chip.
+  - Every other blind, GM-only or whispered message is hidden. Foundry sends these rolls to every client, so the check is the module's.
+- GM rolls use the NPC variant:
+  - The token image, no player name, and the DC is never shown.
+  - The creature and target names follow PF2e's name-visibility setting.
+- The card enters neutral. Its outcome (colour, degree label, die tint, cracks) lands only after the total finishes counting.
+- A check with no DC shows "Result". A natural 20 or 1 still cracks gold or red.
+- Cracks:
+  - Critical success cracks gold. Critical failure cracks red. A blind roll cracks violet.
+  - The shader is `scripts/fx/crack-glsl.js`, copied from gluniverse-foundry-modules, and is drawn by one shared offscreen PIXI renderer.
+  - If WebGL is unavailable, the card falls back to a glowing hairline.
+- Merging:
+  - Damage joins the on-screen card whose message has the same `flags.pf2e.origin.uuid`, within 60 seconds.
+  - A check joins a cast card of the same spell.
+  - Either merge restarts the card's lifetime.
+- Rerolls: PF2e deletes the old message and posts a new one. The deleted check card waits 2 seconds for a reroll with the same speaker, check type and statistic, then rewrites itself with a Reroll chip.
+- Lifetime and stacking: roll cards share `lifetimeMs` and `maxVisible` with cloned cards. Critical success and failure cards last `critLifetimeMultiplier` times longer (default 1.5).
+- Roll cards ignore reduced-motion preferences.
 
 ## Dialog Overlay
 
