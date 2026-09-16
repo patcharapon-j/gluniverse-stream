@@ -4,11 +4,13 @@ import {
   DEFAULT_CAMERA_SETTINGS,
   DEFAULT_CHAT_SETTINGS,
   DEFAULT_DIALOG_SETTINGS,
+  DEFAULT_ROLL_ART,
   DEFAULT_TARGETING_SETTINGS,
   DEFAULT_UI_RULES,
   MODULE_ID,
   TARGET_LINE_VISIBILITY
 } from "./constants.js";
+import { isFocus } from "./framing/focus-math.js";
 import { requestSettingSet } from "./socket.js";
 
 const SETTINGS = {
@@ -18,6 +20,7 @@ const SETTINGS = {
   cameraSettings: { type: Object, default: DEFAULT_CAMERA_SETTINGS, config: false },
   chatSettings: { type: Object, default: DEFAULT_CHAT_SETTINGS, config: false },
   dialogSettings: { type: Object, default: DEFAULT_DIALOG_SETTINGS, config: false },
+  defaultRollArt: { type: Object, default: DEFAULT_ROLL_ART, config: false },
   targetingSettings: { type: Object, default: DEFAULT_TARGETING_SETTINGS, config: false },
   uiRules: { type: Object, default: DEFAULT_UI_RULES, config: false },
   showTargetLines: { type: Boolean, default: true, config: true, scope: "client" }
@@ -68,6 +71,11 @@ export function getDialogSettings() {
   return { ...DEFAULT_DIALOG_SETTINGS, ...(getSetting("dialogSettings") ?? {}) };
 }
 
+/** The picture and framing a GM roll with no art of its own falls back to. */
+export function getDefaultRollArt() {
+  return getSetting("defaultRollArt");
+}
+
 export function getTargetingSettings() {
   return getSetting("targetingSettings");
 }
@@ -106,6 +114,8 @@ export function sanitizeSetting(key, value) {
       return sanitizeChatSettings(value);
     case "dialogSettings":
       return sanitizeObject(value, DEFAULT_DIALOG_SETTINGS);
+    case "defaultRollArt":
+      return sanitizeDefaultRollArt(value);
     case "targetingSettings":
       return sanitizeTargetingSettings(value);
     case "uiRules":
@@ -152,6 +162,14 @@ function sanitizeChatSettings(value) {
   const wanted = Number.isFinite(scale) && scale > 0 ? scale : DEFAULT_CHAT_SETTINGS.cardScale;
   settings.cardScale = Math.min(CARD_SCALE_RANGE.max, Math.max(CARD_SCALE_RANGE.min, wanted));
   return settings;
+}
+
+/** A framing only means something for the picture it was set on, so it is dropped with the picture. */
+function sanitizeDefaultRollArt(value) {
+  const source = (value && typeof value === "object") ? value : {};
+  const src = typeof source.src === "string" ? source.src.trim() : "";
+  const focus = source.focus;
+  return { src, focus: src && isFocus(focus) ? { x: focus.x, y: focus.y, w: focus.w } : null };
 }
 
 function sanitizeTargetingSettings(value) {

@@ -32,6 +32,15 @@
     };
   };
 
+  /** The world's fallback picture for GM rolls with no art, as the module's settings hold it. */
+  const defaultRollArt = () => {
+    try {
+      return game.settings.get("gluniverse-stream", "defaultRollArt") ?? null;
+    } catch (error) {
+      return null;
+    }
+  };
+
   const snapshot = (message) => {
     const actor = message.actor ?? null;
     const token = message.token ?? null;
@@ -84,6 +93,7 @@
               spellAttack: item.spellcasting?.statistic?.check?.mod ?? null
             }
           : item,
+        defaultArt: defaultRollArt(),
         nameVisibilitySetting: game.pf2e?.settings?.tokens?.nameVisibility ?? null
       }
     };

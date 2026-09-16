@@ -61,6 +61,7 @@ World settings:
 - `cameraSettings`: global camera settings.
 - `chatSettings`: global chat overlay settings.
 - `dialogSettings`: global dialog overlay settings.
+- `defaultRollArt`: picture and framing for roll cards from GM rolls with no art of their own.
 - `targetingSettings`: global combat targeting line settings.
 - `uiRules`: selector and detected-element allow/block rules, plus per-element z-index overrides applied to allowed elements in stream mode.
 
@@ -108,6 +109,10 @@ Default settings:
   },
   "dialogSettings": {
     "lifetimeMs": 10000
+  },
+  "defaultRollArt": {
+    "src": "",
+    "focus": null
   },
   "targetingSettings": {
     "enabled": true,
@@ -306,6 +311,7 @@ In a PF2e world, the chat overlay does not clone chat cards. It builds a roll ca
 - Rerolls: PF2e deletes the old message and posts a new one. The deleted check card waits 2 seconds for a reroll with the same speaker, check type and statistic, then rewrites itself with a Reroll chip.
 - Lifetime and stacking: roll cards share `lifetimeMs` and `maxVisible` with cloned cards. Critical success and failure cards last `critLifetimeMultiplier` times longer (default 1.5).
 - Size: the card is laid out on a 1920px design frame and scaled by the stream's own width, then by `chatSettings.cardScale` (default 0.5, Director → Chat Overlay → Roll card size, 15%–300%).
+- Default GM roll art: the world setting `defaultRollArt` (`{src, focus}`, Director → Chat Overlay → Default GM roll art) is the picture a GM roll falls back to when it has no art of its own — a plain roll with no token, or a creature still on a default icon. It never replaces art a roll already has, and never applies to a player's roll. With no picture set the card keeps its monogram. `focus` is the GM's framing for that picture, edited in the same editor as portraits and cleared whenever the picture changes.
 - Roll cards ignore reduced-motion preferences.
 
 ### Portrait framing
@@ -324,7 +330,8 @@ In a PF2e world, the chat overlay does not clone chat cards. It builds a roll ca
   - Only on the stream client, one image at a time, yielding between windows so animations do not hitch.
   - Results are cached in memory and in `localStorage`, keyed by image path. A load or CORS failure is not persisted.
   - Party members, player characters and combatants are pre-scanned when stream mode starts and when combat changes. A card whose art is not analysed yet shows the default crop and glides to its framing when the analysis lands.
-- The GM edits focus points in Director → Frame Portraits (`scripts/framing/portrait-framing-app.js`): drag to pan, scroll or slider to zoom, with a live card preview.
+- The GM edits focus points in Director → Frame Portraits (`scripts/framing/portrait-framing-app.js`): drag to pan, scroll or slider to zoom, with a live card preview. The list holds the party, each player's character, the current combatants, the selected tokens, and any actor opened from its sheet.
+- Every actor sheet a Director owns carries a **Frame For Stream** header control (`scripts/framing/sheet-header.js`), which opens the editor on that actor. It is how an NPC that is neither in the party nor in combat gets framed. ApplicationV1 sheets get a header button; ApplicationV2 sheets get a header control, whose click the module handles itself, since a control only names an action its own sheet would otherwise have to implement.
 - The vendored MediaPipe bundle carries one patch so its loader ignores Foundry's global `Module` (`scripts/vendor/mediapipe/PATCHES.md`).
 
 ## Dialog Overlay
@@ -372,6 +379,11 @@ gluniverse-stream/
       controller.js
       framing.js
       motion.js
+    framing/
+      focus-math.js
+      portrait-framer.js
+      portrait-framing-app.js
+      sheet-header.js
     motion/
       engine.js
     targeting/

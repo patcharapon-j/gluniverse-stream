@@ -123,6 +123,13 @@
       <input type="range" name="chat.cardScale" value="{{chat.cardScale}}" min="{{cardScale.min}}" max="{{cardScale.max}}" step="{{cardScale.step}}" title="How big PF2e roll cards are drawn, on top of the scale that matches the stream's width to the 1920px design frame.">
     </label>
   </div>
+  <div class="gluniverse-stream-default-art">
+    <label for="gluniverse-stream-default-roll-art">Default GM roll art</label>
+    <input type="text" id="gluniverse-stream-default-roll-art" name="defaultRollArt.src" value="{{defaultRollArt.src}}" placeholder="path/to/picture.webp" title="Picture shown on a GM roll with no art of its own, such as a plain roll with no token.">
+    <button type="button" data-action="browse-default-roll-art" title="Pick a picture"><i class="fas fa-file-import"></i> Browse</button>
+    <button type="button" data-action="frame-default-roll-art" title="Choose how the default GM roll picture is framed" {{#unless defaultRollArt.src}}disabled{{/unless}}><i class="fas fa-crop-simple"></i> Frame</button>
+  </div>
+  <p class="gluniverse-stream-form-hint"><small>A GM roll with no art of its own — a plain roll with no token, or a creature still on a default icon — shows this picture instead of the monogram. Leave it empty to keep the monogram. {{#if defaultRollArt.focus}}Framed by hand.{{else}}Framed automatically.{{/if}}</small></p>
   <div class="gluniverse-stream-actions">
     <button type="button" data-action="portrait-framing" title="Choose how each character's picture is framed on PF2e roll cards"><i class="fas fa-crop-simple"></i> Frame Portraits</button>
   </div>

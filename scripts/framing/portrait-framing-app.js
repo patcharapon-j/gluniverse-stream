@@ -1,25 +1,38 @@
 import { MODULE_ID } from "../constants.js";
 import { RollCard } from "../cards/roll-card.js";
 import { artFor } from "../pf2e/read-message.js";
+import { getDefaultRollArt, isDirectorUser, setSetting } from "../settings.js";
 import { ART_ASPECT, defaultCrop, isFocus, placement, toFocus } from "./focus-math.js";
 import { portraitFramer } from "./portrait-framer.js";
 
 const FLAG = "portraitFocus";
 const VIEW_W = 410;
 const MIN_W = 0.08;
+/** The entry for the picture GM rolls with no art of their own fall back to. */
+const DEFAULT_ART_KEY = "default-roll-art";
 
 const { ApplicationV2 } = foundry.applications.api;
 
 let instance = null;
 
-export function openPortraitFramingApp() {
+/**
+ * Opens the framing editor.
+ *
+ * @param {object} [options]
+ * @param {Actor} [options.actor]      An actor to add to the list and select, e.g. from its sheet header.
+ * @param {boolean} [options.defaultArt]  Select the default GM roll art instead.
+ */
+export function openPortraitFramingApp({ actor = null, defaultArt = false } = {}) {
   instance ??= new PortraitFramingApp();
+  if (actor?.uuid) instance.pin(actor);
+  else if (defaultArt) instance.pendingSelect = { key: DEFAULT_ART_KEY };
   instance.render({ force: true });
 }
 
 /**
  * Lets a GM set where each character's roll card art is framed. The focus is saved on the actor per
  * image, and wins over face detection on the stream. Drag to pan, scroll or use the slider to zoom.
+ * The world's default GM roll art is framed here too, and is saved in the module's settings instead.
  */
 class PortraitFramingApp extends ApplicationV2 {
   static DEFAULT_OPTIONS = {
@@ -32,10 +45,28 @@ class PortraitFramingApp extends ApplicationV2 {
   selectedKey = null;
   focus = null;
   image = null;
+  /** Actor uuids added from a sheet header, kept for as long as the editor is open. */
+  pinned = new Set();
+  /** An entry to select once the next render has collected it. */
+  pendingSelect = null;
+
+  /** Adds an actor to the list and selects it, however the actor got here. */
+  pin(actor) {
+    this.pinned.add(actor.uuid);
+    this.pendingSelect = { actorUuid: actor.uuid };
+  }
 
   async _renderHTML() {
-    const entries = collectEntries();
+    const entries = collectEntries(this.pinned);
     this.entries = entries;
+    const wanted = this.pendingSelect;
+    this.pendingSelect = null;
+    const requested = wanted
+      ? entries.find(e => (wanted.key ? e.key === wanted.key : e.actorUuid === wanted.actorUuid))
+      : null;
+    if (requested) this.selectedKey = requested.key;
+    // Art the card would not show either — a default icon, or no picture at all — has nothing to frame.
+    else if (wanted?.actorUuid) ui.notifications?.warn("That actor has no art to frame. Give it a portrait or a token picture first.");
     if (!entries.some(e => e.key === this.selectedKey)) this.selectedKey = entries[0]?.key ?? null;
 
     const root = document.createElement("div");
@@ -60,7 +91,7 @@ class PortraitFramingApp extends ApplicationV2 {
     if (!entries.length) {
       const empty = document.createElement("li");
       empty.className = "empty";
-      empty.textContent = "No characters with art. Assign player characters, or start a combat.";
+      empty.textContent = "No characters with art. Assign player characters, start a combat, or open an actor sheet and use Frame For Stream.";
       list.append(empty);
     }
 
@@ -186,7 +217,7 @@ class PortraitFramingApp extends ApplicationV2 {
       id: "preview",
       kind: "check",
       visibility: "public",
-      actor: { name: entry.name, isNpc: entry.isNpc, img: entry.src, imgKind: entry.isNpc ? "token" : "portrait", focus: this.focus },
+      actor: { name: entry.name, isNpc: entry.isNpc, img: entry.src, imgKind: entry.imgKind ?? (entry.isNpc ? "token" : "portrait"), focus: this.focus },
       player: entry.isNpc ? null : { name: entry.player ?? "Player" },
       target: null,
       action: { label: "Framing preview", sub: null, map: 0 },
@@ -213,20 +244,33 @@ class PortraitFramingApp extends ApplicationV2 {
 
   async saveOverride(focus) {
     const entry = this.current();
-    const actor = entry && fromUuidSync(entry.actorUuid);
-    if (!actor) return;
-    if (!actor.isOwner) return ui.notifications?.warn("You need to own this actor to change its framing.");
-    const others = (actor.getFlag(MODULE_ID, FLAG) ?? []).filter(o => o?.src !== entry.src);
-    const next = isFocus(focus) ? [...others, { src: entry.src, ...focus }] : others;
-    if (next.length) await actor.setFlag(MODULE_ID, FLAG, next);
-    else await actor.unsetFlag(MODULE_ID, FLAG);
-    ui.notifications?.info(isFocus(focus) ? `Saved framing for ${entry.name}.` : `${entry.name} is framed automatically again.`);
+    if (!entry) return;
+    const saved = isFocus(focus) ? { x: focus.x, y: focus.y, w: focus.w } : null;
+    if (entry.isDefaultArt) {
+      if (!isDirectorUser()) return ui.notifications?.warn(game.i18n.localize("GLUNIVERSE_STREAM.notifications.notDirector"));
+      await setSetting("defaultRollArt", { ...getDefaultRollArt(), focus: saved });
+    } else {
+      const actor = fromUuidSync(entry.actorUuid);
+      if (!actor) return;
+      if (!actor.isOwner) return ui.notifications?.warn("You need to own this actor to change its framing.");
+      const others = (actor.getFlag(MODULE_ID, FLAG) ?? []).filter(o => o?.src !== entry.src);
+      const next = saved ? [...others, { src: entry.src, ...saved }] : others;
+      if (next.length) await actor.setFlag(MODULE_ID, FLAG, next);
+      else await actor.unsetFlag(MODULE_ID, FLAG);
+    }
+    ui.notifications?.info(saved ? `Saved framing for ${entry.name}.` : `${entry.name} is framed automatically again.`);
     this.render();
   }
 }
 
-/** Everyone likely to roll: player characters, the party and current combatants, with the art their card shows. */
-function collectEntries() {
+/**
+ * Everything the stream can show art for: the world's default GM roll art, then player characters, the
+ * party, current combatants, selected tokens and any actor opened from its sheet, each with the art its
+ * card shows.
+ *
+ * @param {Set<string>} [pinned]  Actor uuids added from a sheet header.
+ */
+function collectEntries(pinned = new Set()) {
   const entries = new Map();
   const add = (actor, token, isNpc, player) => {
     const base = token?.baseActor ?? actor;
@@ -237,6 +281,21 @@ function collectEntries() {
     const override = (base.getFlag(MODULE_ID, FLAG) ?? []).find(o => o?.src === src && isFocus(o)) ?? null;
     entries.set(key, { key, actorUuid: base.uuid, name: token?.name ?? actor.name, src, isNpc, player, override });
   };
+  const defaultArt = getDefaultRollArt();
+  if (defaultArt.src) {
+    entries.set(DEFAULT_ART_KEY, {
+      key: DEFAULT_ART_KEY,
+      isDefaultArt: true,
+      actorUuid: null,
+      name: "Default GM roll",
+      src: defaultArt.src,
+      isNpc: true,
+      // The reader frames this picture like a portrait, so the preview must too.
+      imgKind: "portrait",
+      player: null,
+      override: isFocus(defaultArt.focus) ? defaultArt.focus : null
+    });
+  }
   for (const user of game.users ?? []) if (user.character && !user.isGM) add(user.character, user.character.prototypeToken, false, user.name);
   for (const member of game.actors?.party?.members ?? []) add(member, member.prototypeToken, false);
   for (const combatant of game.combat?.combatants ?? []) {
@@ -245,6 +304,10 @@ function collectEntries() {
   }
   for (const token of canvas?.tokens?.controlled ?? []) {
     if (token.actor) add(token.actor, token.document, !token.actor.hasPlayerOwner);
+  }
+  for (const uuid of pinned) {
+    const actor = fromUuidSync(uuid);
+    if (actor) add(actor, actor.token ?? actor.prototypeToken, !actor.hasPlayerOwner);
   }
   return [...entries.values()];
 }

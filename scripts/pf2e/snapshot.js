@@ -6,6 +6,7 @@
  */
 
 import { MODULE_ID } from "../constants.js";
+import { getDefaultRollArt } from "../settings.js";
 
 export function snapshotMessage(message) {
   const source = message._source ?? message.toObject?.() ?? {};
@@ -30,6 +31,7 @@ export function snapshotMessage(message) {
       token: tokenOf(message.token),
       target: targetOf(message),
       item: itemOf(message),
+      defaultArt: getDefaultRollArt(),
       nameVisibilitySetting: !!game.pf2e?.settings?.tokens?.nameVisibility
     }
   };

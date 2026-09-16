@@ -3,6 +3,7 @@ import { CameraController } from "./camera/controller.js";
 import { ChatOverlay } from "./chat-overlay.js";
 import { configureDirectorApp, addStreamSceneControl, renderDirectorApp } from "./director-app.js";
 import { DialogOverlay } from "./dialog-overlay.js";
+import { registerFramingSheetHeader } from "./framing/sheet-header.js";
 import { registerMotionEngine } from "./motion/engine.js";
 import { registerSettings } from "./settings.js";
 import { registerSocket } from "./socket.js";
@@ -17,6 +18,7 @@ Hooks.once("init", () => {
   registerMotionEngine();
   registerSettings();
   registerKeybindings();
+  registerFramingSheetHeader();
   foundry.applications.handlebars.loadTemplates([
     `modules/${MODULE_ID}/templates/director.hbs`,
     `modules/${MODULE_ID}/templates/start-prompt.hbs`

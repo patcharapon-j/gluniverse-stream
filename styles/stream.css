@@ -365,11 +365,18 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
 }
 
 .gluniverse-stream-actions,
+.gluniverse-stream-default-art,
 .gluniverse-stream-selector-rule {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+/* The picture GM rolls with no art of their own fall back to: path, browse, frame. */
+.gluniverse-stream-default-art input[type="text"] {
+  flex: 1;
+  min-width: 12rem;
 }
 
 .gluniverse-stream-user-list {
