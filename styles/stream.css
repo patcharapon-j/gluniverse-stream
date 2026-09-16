@@ -384,6 +384,23 @@ body.gluniverse-stream-active:not(.gluniverse-stream-restore) .gluniverse-stream
   gap: 0.5rem;
 }
 
+.gluniverse-stream-director label.gluniverse-stream-range {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.gluniverse-stream-director label.gluniverse-stream-range input[type="range"] {
+  flex: 1;
+  min-width: 4rem;
+}
+
+.gluniverse-stream-director label.gluniverse-stream-range output {
+  min-width: 2.75rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .gluniverse-stream-director label.gluniverse-stream-color input[type="color"] {
   flex: 0 0 2.25rem;
   width: 2.25rem;

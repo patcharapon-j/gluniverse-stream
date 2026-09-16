@@ -296,8 +296,10 @@ export class ChatOverlay {
     root.className = `${CLASSES.chatRoot} position-${position}`;
     root.style.setProperty("--stream-chat-offset-x", `${numberOrZero(settings.offsetX)}px`);
     root.style.setProperty("--stream-chat-offset-y", `${numberOrZero(settings.offsetY)}px`);
-    // Roll cards are designed on a 1920px frame; scale them with the stream's actual width.
-    root.style.setProperty("--glus-rc-scale", String((window.innerWidth || 1920) / 1920));
+    // Roll cards are designed on a 1920px frame; scale them with the stream's actual width, then by the
+    // Director's card scale.
+    const frameScale = (window.innerWidth || 1920) / 1920;
+    root.style.setProperty("--glus-rc-scale", String(frameScale * settings.cardScale));
   }
 
   /** Collapse the card toward its corner while it fades and blurs out, then remove it. */

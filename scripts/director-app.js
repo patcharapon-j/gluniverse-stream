@@ -1,6 +1,7 @@
 import { getActiveSceneCombat, getCombatants } from "./combat-utils.js";
 import {
   CAMERA_MODES,
+  CARD_SCALE_RANGE,
   CHAT_POSITIONS,
   MODULE_ID,
   SCENE_VIEW_MODES,
@@ -139,6 +140,7 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       camera,
       spotlightSelected: camera.combatMode === CAMERA_MODES.spotlight,
       chat,
+      cardScale: { ...CARD_SCALE_RANGE, percent: Math.round(chat.cardScale * 100) },
       dialog,
       targeting,
       tokenRows: services.tokenTracking?.getTokenRows() ?? [],
@@ -176,6 +178,8 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   async _onFirstRender(context, options) {
     await super._onFirstRender(context, options);
     this.element.addEventListener("change", event => this.#onChange(event));
+    // Sliders only commit on release, so mirror the value into its readout while it is dragged.
+    this.element.addEventListener("input", event => updateRangeOutput(event.target));
     this.element.addEventListener("click", event => this.#onClick(event));
     this.element.addEventListener("submit", event => event.preventDefault());
   }
@@ -341,6 +345,12 @@ function optionsFor(labels, selected) {
 
 function labelize(value) {
   return value.split("-").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function updateRangeOutput(target) {
+  if (!(target instanceof HTMLInputElement) || target.type !== "range" || !target.name) return;
+  const output = target.closest("label")?.querySelector(`output[data-for="${target.name}"]`);
+  if (output) output.textContent = `${Math.round(Number(target.value) * 100)}%`;
 }
 
 function fieldValue(target) {
