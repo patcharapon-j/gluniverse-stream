@@ -58,5 +58,10 @@
   "GLUNIVERSE_STREAM.rollCard.arcane": "Arcane",
   "GLUNIVERSE_STREAM.rollCard.divine": "Divine",
   "GLUNIVERSE_STREAM.rollCard.occult": "Occult",
-  "GLUNIVERSE_STREAM.rollCard.primal": "Primal"
+  "GLUNIVERSE_STREAM.rollCard.primal": "Primal",
+  "GLUNIVERSE_STREAM.rollCard.UsesAction": "Takes an action",
+  "GLUNIVERSE_STREAM.rollCard.Action": "Action",
+  "GLUNIVERSE_STREAM.rollCard.Actions": "Actions",
+  "GLUNIVERSE_STREAM.rollCard.Reaction": "Reaction",
+  "GLUNIVERSE_STREAM.rollCard.FreeAction": "Free action"
 }

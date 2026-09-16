@@ -153,6 +153,7 @@ for (const [viewer, capture] of Object.entries(captures)) {
       const card = read("action-post");
       assert.equal(card.kind, "action");
       assert.equal(card.action.label, "Hide");
+      assert.equal(card.action.cost, null, "the captured action came from an unsaved item, so PF2e could not resolve its cost");
       assert.equal(card.roll, null);
     });
   });

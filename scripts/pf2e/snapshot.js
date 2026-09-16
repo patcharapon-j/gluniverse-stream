@@ -89,6 +89,7 @@ function itemOf(message) {
     rank: item.rank ?? null,
     isCantrip: item.isCantrip ?? null,
     defense: item.system?.defense ?? null,
+    actionCost: item.actionCost ?? null,
     spellDC: item.spellcasting?.statistic?.dc?.value ?? null,
     spellAttack: item.spellcasting?.statistic?.check?.mod ?? null
   };

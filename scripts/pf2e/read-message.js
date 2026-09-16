@@ -56,7 +56,16 @@ export function readMessage(snapshot) {
   if (kind === "check") return { ...base, ...readCheck(raw, context, derived) };
   if (kind === "damage") return { ...base, ...readDamage(raw, derived) };
   if (kind === "cast") return { ...base, ...readCast(pf2e, derived) };
-  return { ...base, action: { label: derived.item?.name ?? headingText(raw.content) ?? "", sub: null, map: 0 } };
+  const cost = derived.item?.actionCost ?? null;
+  return {
+    ...base,
+    action: {
+      label: derived.item?.name ?? headingText(raw.content) ?? "",
+      sub: null,
+      map: 0,
+      cost: cost ? { type: cost.type ?? "action", value: cost.value ?? null } : null
+    }
+  };
 }
 
 /** "public", "ownBlind" (a player's own blind roll), or null for anything the stream must not show. */
@@ -224,7 +233,7 @@ function decodeEntities(text) {
  * @property {{name: string|null, isNpc: boolean, img: string|null, imgKind: "token"|"portrait"}} actor
  * @property {{name: string}|null} player
  * @property {{name: string|null}|null} target
- * @property {{label: string, sub: string|null, map: number}|null} action
+ * @property {{label: string, sub: string|null, map: number, cost?: {type: string, value: number|null}|null}|null} action
  * @property {{natural: number|null, total: number|null, dc: number|null, dcVisible: boolean, degree: 0|1|2|3|null}|null} roll
  * @property {{name: string, tradition: string|null, rank: number|null, isCantrip: boolean, dc: number|null, save: {statistic: string, basic: boolean}|null, attackBonus: number|null}|null} spell
  * @property {{total: number, parts: {type: string, amount: number, persistent: boolean}[], crit: boolean}|null} damage
