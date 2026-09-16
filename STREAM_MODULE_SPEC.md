@@ -305,6 +305,25 @@ In a PF2e world, the chat overlay does not clone chat cards. It builds a roll ca
 - Lifetime and stacking: roll cards share `lifetimeMs` and `maxVisible` with cloned cards. Critical success and failure cards last `critLifetimeMultiplier` times longer (default 1.5).
 - Roll cards ignore reduced-motion preferences.
 
+### Portrait framing
+
+- Card art is shown through a feathered frame. Which part of the picture shows is decided in this order:
+  1. A GM's focus point, saved per image in the actor flag `portraitFocus` as `[{src, x, y, w}]`.
+  2. A face found by MediaPipe's BlazeFace model.
+  3. smartcrop's content-aware pick.
+  4. The default crop: full width, near the top.
+- A focus is `{x, y, w}` in image widths; the height follows from the art's 8.2:4.4 aspect (`scripts/framing/focus-math.js`, unit tested).
+- Face detection:
+  - Runs on the whole image and on zoomed windows over its upper 75%, so small faces in full-body art are found.
+  - Overlapping hits merge into votes. A face needs a score of at least 0.75, or 3+ votes at 0.45 or more, and must sit in the top half of tall art.
+  - PF2e iconics: faces found in 33/36 portraits and 31/36 tokens.
+- Where it runs (`scripts/framing/portrait-framer.js`):
+  - Only on the stream client, one image at a time, yielding between windows so animations do not hitch.
+  - Results are cached in memory and in `localStorage`, keyed by image path. A load or CORS failure is not persisted.
+  - Party members, player characters and combatants are pre-scanned when stream mode starts and when combat changes. A card whose art is not analysed yet shows the default crop and glides to its framing when the analysis lands.
+- The GM edits focus points in Director → Frame Portraits (`scripts/framing/portrait-framing-app.js`): drag to pan, scroll or slider to zoom, with a live card preview.
+- The vendored MediaPipe bundle carries one patch so its loader ignores Foundry's global `Module` (`scripts/vendor/mediapipe/PATCHES.md`).
+
 ## Dialog Overlay
 
 - Detect dialog-like applications rendered on the stream client.
