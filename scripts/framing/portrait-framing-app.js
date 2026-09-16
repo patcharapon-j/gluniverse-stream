@@ -218,7 +218,8 @@ class PortraitFramingApp extends ApplicationV2 {
     if (!actor.isOwner) return ui.notifications?.warn("You need to own this actor to change its framing.");
     const others = (actor.getFlag(MODULE_ID, FLAG) ?? []).filter(o => o?.src !== entry.src);
     const next = isFocus(focus) ? [...others, { src: entry.src, ...focus }] : others;
-    await actor.setFlag(MODULE_ID, FLAG, next);
+    if (next.length) await actor.setFlag(MODULE_ID, FLAG, next);
+    else await actor.unsetFlag(MODULE_ID, FLAG);
     ui.notifications?.info(isFocus(focus) ? `Saved framing for ${entry.name}.` : `${entry.name} is framed automatically again.`);
     this.render();
   }
