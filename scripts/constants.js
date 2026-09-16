@@ -68,8 +68,16 @@ export const DEFAULT_CHAT_SETTINGS = {
   lifetimeMs: 10000,
   maxVisible: 5,
   /** PF2e roll cards: critical success and critical failure cards stay up this many times longer. */
-  critLifetimeMultiplier: 1.5
+  critLifetimeMultiplier: 1.5,
+  /**
+   * PF2e roll cards: how big the card is, on top of the scale that matches the stream's width to the
+   * 1920px design frame. 1 is the size the mockup was drawn at, which overpowers most stream layouts.
+   */
+  cardScale: 0.5
 };
+
+/** The range the Director can drag `chatSettings.cardScale` across. */
+export const CARD_SCALE_RANGE = { min: 0.15, max: 3, step: 0.05 };
 
 export const DEFAULT_DIALOG_SETTINGS = {
   lifetimeMs: 10000

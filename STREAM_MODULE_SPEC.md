@@ -102,7 +102,9 @@ Default settings:
     "offsetX": 0,
     "offsetY": 0,
     "lifetimeMs": 10000,
-    "maxVisible": 5
+    "maxVisible": 5,
+    "critLifetimeMultiplier": 1.5,
+    "cardScale": 0.5
   },
   "dialogSettings": {
     "lifetimeMs": 10000
@@ -303,6 +305,7 @@ In a PF2e world, the chat overlay does not clone chat cards. It builds a roll ca
   - Either merge restarts the card's lifetime.
 - Rerolls: PF2e deletes the old message and posts a new one. The deleted check card waits 2 seconds for a reroll with the same speaker, check type and statistic, then rewrites itself with a Reroll chip.
 - Lifetime and stacking: roll cards share `lifetimeMs` and `maxVisible` with cloned cards. Critical success and failure cards last `critLifetimeMultiplier` times longer (default 1.5).
+- Size: the card is laid out on a 1920px design frame and scaled by the stream's own width, then by `chatSettings.cardScale` (default 0.5, Director → Chat Overlay → Roll card size, 15%–300%).
 - Roll cards ignore reduced-motion preferences.
 
 ### Portrait framing

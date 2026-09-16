@@ -119,6 +119,9 @@
     <label>Lifetime ms <input type="number" name="chat.lifetimeMs" value="{{chat.lifetimeMs}}" step="500"></label>
     <label>Max visible <input type="number" name="chat.maxVisible" value="{{chat.maxVisible}}" step="1"></label>
     <label>Crit lifetime × <input type="number" name="chat.critLifetimeMultiplier" value="{{chat.critLifetimeMultiplier}}" step="0.25" min="1"></label>
+    <label class="gluniverse-stream-range">Roll card size <output data-for="chat.cardScale">{{cardScale.percent}}%</output>
+      <input type="range" name="chat.cardScale" value="{{chat.cardScale}}" min="{{cardScale.min}}" max="{{cardScale.max}}" step="{{cardScale.step}}" title="How big PF2e roll cards are drawn, on top of the scale that matches the stream's width to the 1920px design frame.">
+    </label>
   </div>
   <div class="gluniverse-stream-actions">
     <button type="button" data-action="portrait-framing" title="Choose how each character's picture is framed on PF2e roll cards"><i class="fas fa-crop-simple"></i> Frame Portraits</button>

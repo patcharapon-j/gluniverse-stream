@@ -1,5 +1,6 @@
 import {
   CAMERA_MODES,
+  CARD_SCALE_RANGE,
   DEFAULT_CAMERA_SETTINGS,
   DEFAULT_CHAT_SETTINGS,
   DEFAULT_DIALOG_SETTINGS,
@@ -60,7 +61,7 @@ export function getCameraSettings() {
 }
 
 export function getChatSettings() {
-  return { ...DEFAULT_CHAT_SETTINGS, ...(getSetting("chatSettings") ?? {}) };
+  return sanitizeChatSettings(getSetting("chatSettings"));
 }
 
 export function getDialogSettings() {
@@ -102,7 +103,7 @@ export function sanitizeSetting(key, value) {
     case "cameraSettings":
       return sanitizeCameraSettings(value);
     case "chatSettings":
-      return sanitizeObject(value, DEFAULT_CHAT_SETTINGS);
+      return sanitizeChatSettings(value);
     case "dialogSettings":
       return sanitizeObject(value, DEFAULT_DIALOG_SETTINGS);
     case "targetingSettings":
@@ -141,6 +142,16 @@ function sanitizeCameraSettings(value) {
   const panSpeed = Number(migrated.panSpeed);
   migrated.panSpeed = Number.isFinite(panSpeed) && panSpeed > 0 ? panSpeed : DEFAULT_CAMERA_SETTINGS.panSpeed;
   return pickDefaults(migrated, DEFAULT_CAMERA_SETTINGS);
+}
+
+/** Roll card scale is clamped to the range the Director offers, so a stray value can't blank the overlay. */
+function sanitizeChatSettings(value) {
+  const settings = sanitizeObject(value, DEFAULT_CHAT_SETTINGS);
+  const scale = Number(settings.cardScale);
+  // A blank, missing or zero scale means "unset", not "invisible", so it falls back to the default.
+  const wanted = Number.isFinite(scale) && scale > 0 ? scale : DEFAULT_CHAT_SETTINGS.cardScale;
+  settings.cardScale = Math.min(CARD_SCALE_RANGE.max, Math.max(CARD_SCALE_RANGE.min, wanted));
+  return settings;
 }
 
 function sanitizeTargetingSettings(value) {
