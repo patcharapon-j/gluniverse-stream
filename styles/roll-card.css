@@ -1,0 +1,426 @@
+/*
+ * GLUniverse Stream: PF2e roll card ("Hairline").
+ *
+ * Every length is a multiple of --u, one percent of a 1920px frame, so the card keeps the proportions
+ * approved in the design mockup at any stream resolution. --glus-rc-scale scales the whole card.
+ *
+ * State lives in data attributes on the root:
+ *   data-tone     crit-success | success | failure | crit-failure | none | arcane | divine | occult | primal
+ *   data-pending  present while the total is still counting; the outcome colour waits for it to clear
+ *   data-blind    a player's own blind roll, always violet
+ *   data-npc      a GM creature roll
+ */
+
+.glus-rc {
+  --u: calc(var(--glus-rc-scale, 1) * 19.2px);
+  --glus-rc-tone: var(--glus-rc-deg-none);
+  position: relative;
+  display: grid;
+  width: calc(28 * var(--u));
+  font-family: var(--gl-display);
+  color: var(--gl-text);
+  filter: drop-shadow(0 calc(0.35 * var(--u)) calc(0.9 * var(--u)) rgb(0 0 0 / 0.55));
+  pointer-events: none;
+}
+
+.glus-rc[data-tone="crit-success"] { --glus-rc-tone: var(--glus-rc-deg-crit-success); }
+.glus-rc[data-tone="success"] { --glus-rc-tone: var(--glus-rc-deg-success); }
+.glus-rc[data-tone="failure"] { --glus-rc-tone: var(--glus-rc-deg-failure); }
+.glus-rc[data-tone="crit-failure"] { --glus-rc-tone: var(--glus-rc-deg-crit-failure); }
+.glus-rc[data-tone="arcane"] { --glus-rc-tone: var(--glus-rc-trad-arcane); }
+.glus-rc[data-tone="divine"] { --glus-rc-tone: var(--glus-rc-trad-divine); }
+.glus-rc[data-tone="occult"] { --glus-rc-tone: var(--glus-rc-trad-occult); }
+.glus-rc[data-tone="primal"] { --glus-rc-tone: var(--glus-rc-trad-primal); }
+/* A blind roll is violet whatever the outcome; pending beats everything until the total settles. */
+.glus-rc[data-blind][data-tone] { --glus-rc-tone: var(--glus-rc-blind); }
+.glus-rc[data-pending][data-tone] { --glus-rc-tone: var(--glus-rc-deg-none); }
+
+/* ── Main strip ── */
+.glus-rc-main {
+  position: relative;
+  height: calc(4.4 * var(--u));
+  display: grid;
+  grid-template-columns: calc(5 * var(--u)) minmax(0, 1fr) auto;
+  background: color-mix(in srgb, var(--gl-surface) 88%, transparent);
+  backdrop-filter: blur(10px) saturate(1.15);
+  box-shadow: var(--gl-etch);
+  clip-path: polygon(0 0, calc(100% - 0.65 * var(--u)) 0, 100% calc(0.65 * var(--u)), 100% 100%, 0 100%);
+  overflow: hidden;
+}
+.glus-rc[data-blind] .glus-rc-main {
+  background: color-mix(in srgb, var(--gl-violet) 14%, color-mix(in srgb, var(--gl-surface) 88%, transparent));
+}
+
+/* Portrait: cropped, never stretched, feathered into the strip on the right and at top and bottom. */
+.glus-rc-art {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: calc(8.2 * var(--u));
+  max-width: none;
+  border: 0;
+  object-fit: cover;
+  object-position: 50% 36%;
+  display: block;
+  -webkit-mask-image: linear-gradient(90deg, #000 28%, rgb(0 0 0 / 0.55) 55%, transparent 100%),
+    linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(90deg, #000 28%, rgb(0 0 0 / 0.55) 55%, transparent 100%),
+    linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+  mask-composite: intersect;
+}
+.glus-rc-art[data-kind="token"] {
+  object-position: 50% 50%;
+  width: calc(7.2 * var(--u));
+}
+
+.glus-rc-text,
+.glus-rc-result {
+  position: relative;
+  z-index: 1;
+  text-shadow: var(--glus-rc-text-shadow);
+}
+
+/* ── Identity column ── */
+.glus-rc-text {
+  grid-column: 2;
+  padding-right: calc(0.8 * var(--u));
+  display: grid;
+  align-content: center;
+  gap: calc(0.22 * var(--u));
+  min-width: 0;
+}
+.glus-rc-player {
+  font-family: var(--gl-tech);
+  font-size: calc(0.6 * var(--u));
+  letter-spacing: 0.22em;
+  color: var(--gl-text-dim);
+  text-transform: uppercase;
+  display: flex;
+  gap: calc(0.5 * var(--u));
+  align-items: center;
+  white-space: nowrap;
+  min-height: calc(0.8 * var(--u));
+}
+.glus-rc[data-npc] .glus-rc-player-name { color: var(--gl-hazard); }
+.glus-rc-name {
+  font-weight: 600;
+  font-size: calc(1.3 * var(--u));
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--gl-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.glus-rc-action {
+  font-weight: 500;
+  font-size: calc(0.8 * var(--u));
+  color: #c6ccd9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.glus-rc-action-label { color: var(--gl-text); font-weight: 600; }
+.glus-rc-map {
+  font-family: var(--gl-tech);
+  font-size: calc(0.62 * var(--u));
+  color: var(--gl-text-dim);
+  letter-spacing: 0.08em;
+  margin-left: calc(0.3 * var(--u));
+}
+.glus-rc-chip {
+  font-family: var(--gl-tech);
+  font-size: calc(0.46 * var(--u));
+  letter-spacing: 0.2em;
+  color: var(--gl-ink-0);
+  padding: calc(0.06 * var(--u)) calc(0.3 * var(--u));
+  text-transform: uppercase;
+  text-shadow: none;
+}
+.glus-rc-chip[data-chip="blind"] { background: var(--glus-rc-blind); }
+.glus-rc-chip[data-chip="reroll"] { background: var(--gl-signal); }
+
+/* ── Result column ── */
+.glus-rc-result {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: calc(0.7 * var(--u));
+  padding: 0 calc(1 * var(--u)) 0 calc(0.9 * var(--u));
+}
+.glus-rc-result::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 24%;
+  bottom: 24%;
+  width: 1px;
+  background: var(--gl-edge);
+  transform-origin: center;
+}
+.glus-rc-degree {
+  display: grid;
+  justify-items: end;
+  gap: calc(0.16 * var(--u));
+}
+.glus-rc-degree-label {
+  font-weight: 700;
+  font-size: calc(0.74 * var(--u));
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--glus-rc-tone);
+  white-space: nowrap;
+  transition: color 0.35s;
+}
+.glus-rc[data-pending] .glus-rc-degree-label { visibility: hidden; }
+.glus-rc-degree-meta,
+.glus-rc-spell-line {
+  font-family: var(--gl-tech);
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: calc(0.25 * var(--u));
+  text-transform: uppercase;
+}
+.glus-rc-degree-meta {
+  font-size: calc(0.56 * var(--u));
+  color: var(--gl-text);
+}
+.glus-rc-big-number {
+  font-family: var(--gl-display);
+  font-weight: 700;
+  font-size: calc(1.15 * var(--u));
+  letter-spacing: 0;
+  line-height: 1;
+  color: var(--gl-text-bright);
+}
+.glus-rc-total {
+  font-weight: 700;
+  font-size: calc(2.8 * var(--u));
+  line-height: 1;
+  min-width: calc(2.2 * var(--u));
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--gl-text-bright);
+  text-shadow: var(--glus-rc-text-shadow), 0 0 calc(1.8 * var(--u)) rgb(0 0 0 / 0.85);
+  transition: color 0.35s;
+}
+.glus-rc[data-tone="crit-success"] .glus-rc-total,
+.glus-rc[data-tone="crit-failure"] .glus-rc-total { color: var(--glus-rc-tone); }
+.glus-rc[data-blind] .glus-rc-total { color: var(--gl-violet-hot); }
+.glus-rc[data-pending] .glus-rc-total { color: var(--gl-text-bright); }
+
+/* Natural die: a d20 silhouette with the natural value large and centred. */
+.glus-rc-die {
+  position: relative;
+  width: calc(3 * var(--u));
+  height: calc(3 * var(--u));
+  flex: none;
+  filter: drop-shadow(0 0 calc(0.3 * var(--u)) rgb(0 0 0 / 0.95)) drop-shadow(0 calc(0.1 * var(--u)) calc(0.2 * var(--u)) #000);
+}
+.glus-rc-die svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.glus-rc-die-edge {
+  fill: color-mix(in srgb, var(--gl-ink-0) 70%, transparent);
+  stroke: var(--gl-text-dim);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  transition: stroke 0.3s, fill 0.3s;
+}
+.glus-rc-die-facet {
+  fill: none;
+  stroke: var(--gl-text-dim);
+  stroke-width: 2;
+  opacity: 0.28;
+  transition: stroke 0.3s;
+}
+.glus-rc-die-value {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  font-weight: 700;
+  font-size: calc(1.44 * var(--u));
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--gl-text-bright);
+  text-shadow: var(--glus-rc-text-shadow);
+  transition: color 0.3s;
+}
+.glus-rc-die[data-natural="max"] .glus-rc-die-edge {
+  stroke: var(--glus-rc-deg-crit-success);
+  fill: color-mix(in srgb, var(--glus-rc-deg-crit-success) 22%, var(--gl-ink-0));
+}
+.glus-rc-die[data-natural="max"] .glus-rc-die-facet { stroke: var(--glus-rc-deg-crit-success); }
+.glus-rc-die[data-natural="max"] .glus-rc-die-value { color: var(--glus-rc-deg-crit-success); }
+.glus-rc-die[data-natural="min"] .glus-rc-die-edge {
+  stroke: var(--glus-rc-deg-crit-failure);
+  fill: color-mix(in srgb, var(--glus-rc-deg-crit-failure) 22%, var(--gl-ink-0));
+}
+.glus-rc-die[data-natural="min"] .glus-rc-die-facet { stroke: var(--glus-rc-deg-crit-failure); }
+.glus-rc-die[data-natural="min"] .glus-rc-die-value { color: var(--glus-rc-deg-crit-failure); }
+.glus-rc[data-blind] .glus-rc-die .glus-rc-die-edge,
+.glus-rc[data-blind] .glus-rc-die .glus-rc-die-facet { stroke: var(--glus-rc-blind); }
+.glus-rc[data-blind] .glus-rc-die .glus-rc-die-value { color: var(--gl-violet-hot); }
+.glus-rc[data-pending] .glus-rc-die .glus-rc-die-edge {
+  stroke: var(--gl-text-dim);
+  fill: color-mix(in srgb, var(--gl-ink-0) 70%, transparent);
+}
+.glus-rc[data-pending] .glus-rc-die .glus-rc-die-facet { stroke: var(--gl-text-dim); }
+.glus-rc[data-pending] .glus-rc-die .glus-rc-die-value { color: var(--gl-text-bright); }
+
+/* Spell cast: the spell name is the headline, the DC or attack bonus sits under it. */
+.glus-rc-spell {
+  display: grid;
+  justify-items: end;
+  gap: calc(0.2 * var(--u));
+  max-width: calc(11 * var(--u));
+}
+.glus-rc-spell-name {
+  font-weight: 700;
+  font-size: calc(1.75 * var(--u));
+  line-height: 1;
+  color: var(--gl-text-bright);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-shadow: var(--glus-rc-text-shadow), 0 0 calc(1.6 * var(--u)) rgb(0 0 0 / 0.85);
+}
+.glus-rc-spell-line {
+  font-size: calc(0.6 * var(--u));
+  color: var(--glus-rc-tone);
+  transition: color 0.35s;
+}
+
+/* ── Layers over the strip ── */
+.glus-rc-fx,
+.glus-rc-glow,
+.glus-rc-sheen,
+.glus-rc-scan,
+.glus-rc-hair {
+  position: absolute;
+  pointer-events: none;
+}
+.glus-rc-fx {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+.glus-rc-glow {
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  box-shadow: inset 0 0 calc(1.2 * var(--u)) var(--glus-rc-tone);
+}
+.glus-rc-sheen {
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.16) 48%, rgb(255 255 255 / 0.04) 54%, transparent 62%);
+}
+.glus-rc-scan {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: max(1px, calc(0.12 * var(--u)));
+  z-index: 3;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--glus-rc-tone) 20%, #fff 60%, var(--glus-rc-tone) 85%, transparent);
+  box-shadow: 0 0 calc(0.8 * var(--u)) var(--glus-rc-tone);
+}
+.glus-rc-hair {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: max(1px, calc(0.09 * var(--u)));
+  z-index: 3;
+  transform-origin: left;
+  background: var(--glus-rc-tone);
+  box-shadow: 0 0 calc(0.5 * var(--u)) var(--glus-rc-tone);
+  transition: background-color 0.35s, box-shadow 0.35s;
+}
+.glus-rc[data-blind] .glus-rc-hair {
+  background: repeating-linear-gradient(90deg, var(--glus-rc-tone) 0 calc(0.5 * var(--u)), transparent 0 calc(0.8 * var(--u)));
+  box-shadow: none;
+}
+
+/* ── Damage row ── */
+.glus-rc-damage {
+  position: relative;
+  margin-left: calc(2.4 * var(--u));
+  height: calc(2.5 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(0.6 * var(--u));
+  padding: 0 calc(1 * var(--u)) 0 calc(0.8 * var(--u));
+  background: color-mix(in srgb, var(--gl-ink-2) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--gl-hair);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, calc(0.5 * var(--u)) 100%, 0 calc(100% - 0.5 * var(--u)));
+  overflow: hidden;
+  text-shadow: var(--glus-rc-text-shadow);
+}
+.glus-rc-damage > :not(.glus-rc-fx) { position: relative; z-index: 1; }
+.glus-rc-damage-key {
+  font-family: var(--gl-tech);
+  font-size: calc(0.54 * var(--u));
+  letter-spacing: 0.22em;
+  color: var(--gl-text-dim);
+  text-transform: uppercase;
+}
+.glus-rc-damage-parts {
+  display: flex;
+  gap: calc(0.5 * var(--u));
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.glus-rc-damage-part {
+  display: flex;
+  align-items: center;
+  gap: calc(0.25 * var(--u));
+  font-family: var(--gl-tech);
+  font-size: calc(0.66 * var(--u));
+  color: var(--gl-text);
+  white-space: nowrap;
+}
+.glus-rc-damage-part i {
+  font-size: calc(0.7 * var(--u));
+  color: #c9d1de;
+}
+.glus-rc-damage-part[data-type="fire"] i { color: #ff8a3d; }
+.glus-rc-damage-part[data-type="cold"] i { color: #8fd8ff; }
+.glus-rc-damage-part[data-type="electricity"] i { color: #9fc6ff; }
+.glus-rc-damage-part[data-type="acid"] i,
+.glus-rc-damage-part[data-type="poison"] i { color: #9be36d; }
+.glus-rc-damage-part[data-type="vitality"] i { color: #ffe9b8; }
+.glus-rc-damage-part[data-type="void"] i { color: #b497ff; }
+.glus-rc-damage-crit {
+  font-family: var(--gl-tech);
+  font-size: calc(0.54 * var(--u));
+  letter-spacing: 0.14em;
+  color: var(--gl-ink-0);
+  background: var(--glus-rc-deg-crit-success);
+  padding: calc(0.05 * var(--u)) calc(0.25 * var(--u));
+  text-shadow: none;
+}
+.glus-rc-damage-total {
+  font-weight: 700;
+  font-size: calc(1.6 * var(--u));
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--gl-text-bright);
+}
+.glus-rc-damage[data-crit] .glus-rc-damage-total { color: var(--glus-rc-deg-crit-success); }
