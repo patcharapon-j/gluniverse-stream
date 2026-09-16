@@ -1,0 +1,52 @@
+/*
+ * GLUniverse Stream: Etched Glass tokens for the PF2e roll card.
+ *
+ * Snapshot of gluniverse-foundry-modules/styles/gl-tokens.css (suite commit ad75f31), trimmed to the
+ * tokens the roll card reads. The stream module does not load the suite at runtime, so copy values
+ * from there when the suite changes rather than inventing new ones here.
+ *
+ * Scoped to the card root so nothing leaks into Foundry or other modules.
+ */
+.glus-rc {
+  --gl-ink-0: #02070b;
+  --gl-ink-1: #080b11;
+  --gl-ink-2: #0b0f17;
+  --gl-text: #eef1f7;
+  --gl-text-bright: #f3fbff;
+  --gl-text-dim: #98a2b6;
+
+  --gl-signal: #ffd24a;
+  --gl-hazard: #ff4a52;
+  --gl-good: #5fdb92;
+  --gl-info: #4aa3ff;
+  --gl-violet: #b497ff;
+  --gl-violet-hot: #e0d4ff;
+  --gl-orchid: #cf85e0;
+  --gl-jade: #54d6a6;
+  --gl-signal-pale: #ffe9b8;
+  --gl-accent: #6b86d6;
+
+  --gl-display: "Oxanium", "Segoe UI", system-ui, sans-serif;
+  --gl-tech: "Bahnschrift", "JetBrains Mono", "Share Tech Mono", Consolas, monospace;
+
+  --gl-hair: rgb(255 255 255 / 0.08);
+  --gl-edge: rgb(255 255 255 / 0.13);
+  --gl-surface: color-mix(in srgb, var(--gl-accent) 10%, var(--gl-ink-1));
+  --gl-etch: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 -12px 28px rgb(0 0 0 / 0.38);
+
+  /* Roll card roles, built on the suite palette. */
+  --glus-rc-deg-crit-success: var(--gl-signal);
+  --glus-rc-deg-success: var(--gl-good);
+  --glus-rc-deg-failure: var(--gl-text-dim);
+  --glus-rc-deg-crit-failure: var(--gl-hazard);
+  --glus-rc-deg-none: var(--gl-text);
+  --glus-rc-blind: var(--gl-violet);
+  --glus-rc-trad-arcane: var(--gl-info);
+  --glus-rc-trad-divine: var(--gl-signal-pale);
+  --glus-rc-trad-occult: var(--gl-orchid);
+  --glus-rc-trad-primal: var(--gl-jade);
+
+  /* One heavy shadow for every glyph that can sit over the cracks. */
+  --glus-rc-text-shadow: 0 1px 0 #000, 0 2px 2px #000, 0 0 3px #000, 0 0 8px rgb(0 0 0 / 0.95),
+    0 0 18px rgb(0 0 0 / 0.8);
+}

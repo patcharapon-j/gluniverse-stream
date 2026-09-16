@@ -1,5 +1,7 @@
 import { CLASSES, MODULE_ID } from "./constants.js";
 import { animate, prefersCalmMotion, remove } from "./motion/engine.js";
+import { waitForDiceAnimation } from "./dice-wait.js";
+import { RollCardFeed } from "./pf2e/roll-card-feed.js";
 import { getChatSettings } from "./settings.js";
 
 /** Where cards slide in from and out to, per overlay corner, in pixels. */
@@ -16,9 +18,15 @@ export class ChatOverlay {
     this.streamMode = streamMode;
     this.cards = [];
     this.cardsByMessageId = new Map();
+    this.feed = new RollCardFeed(this);
   }
 
   registerHooks() {
+    // PF2e gets its own roll cards, built from new messages only, never from re-rendered history.
+    Hooks.on("createChatMessage", message => {
+      if (!this.streamMode.active || !usesRollCards()) return;
+      this.feed.handleCreate(message).catch(error => console.error(`${MODULE_ID} | Roll card failed`, error));
+    });
     Hooks.on("renderChatMessageHTML", (message, html) => this.handleRenderedMessage(message, html));
     Hooks.on("updateChatMessage", message => this.handleMessageUpdate(message));
     Hooks.on("deleteChatMessage", message => this.handleMessageDelete(message));
@@ -26,13 +34,22 @@ export class ChatOverlay {
       if (key === "chatSettings") this.applySettings();
     });
     Hooks.on(`${MODULE_ID}.streamModeChanged`, active => {
-      if (active) this.applySettings();
-      else this.clear();
+      if (active) {
+        this.applySettings();
+        if (usesRollCards()) this.feed.prescan();
+      } else this.clear();
     });
+    // New combatants are the next people to roll: frame their art ahead of time.
+    const prescan = () => {
+      if (this.streamMode.active && usesRollCards()) this.feed.prescan();
+    };
+    Hooks.on("createCombatant", prescan);
+    Hooks.on("combatStart", prescan);
+    Hooks.on("canvasReady", prescan);
   }
 
   handleRenderedMessage(message, html) {
-    if (!this.streamMode.active) return;
+    if (!this.streamMode.active || usesRollCards()) return;
     if (!isAudienceVisible(message)) return;
     const source = getElement(html);
     if (!source) return;
@@ -58,7 +75,7 @@ export class ChatOverlay {
   }
 
   handleMessageUpdate(message) {
-    if (!this.streamMode.active) return;
+    if (!this.streamMode.active || usesRollCards()) return;
     const id = message?.id;
     if (!id) return;
     const record = this.cardsByMessageId.get(id);
@@ -72,6 +89,7 @@ export class ChatOverlay {
   handleMessageDelete(message) {
     const id = message?.id;
     if (!id) return;
+    if (usesRollCards() && this.feed.handleDelete(message)) return;
     const record = this.cardsByMessageId.get(id);
     // Mark the record so an in-flight createCardAfterDice (still awaiting the dice
     // animation) aborts instead of building a card for a message that no longer
@@ -129,9 +147,13 @@ export class ChatOverlay {
     this.mirrorLiveSource(record, latest, message);
 
     window.requestAnimationFrame(() => this.animateCardIn(record, settings.position));
-    while (this.cards.length > Math.max(1, Number(settings.maxVisible) || 5)) {
-      this.removeCard(this.cards[0].element);
-    }
+    this.enforceMaxVisible();
+  }
+
+  /** When more cards are up than `maxVisible` allows, the oldest leave. */
+  enforceMaxVisible() {
+    const max = Math.max(1, Number(getChatSettings().maxVisible) || 5);
+    while (this.cards.length > max) this.removeCard(this.cards[0].element);
   }
 
   /**
@@ -274,6 +296,8 @@ export class ChatOverlay {
     root.className = `${CLASSES.chatRoot} position-${position}`;
     root.style.setProperty("--stream-chat-offset-x", `${numberOrZero(settings.offsetX)}px`);
     root.style.setProperty("--stream-chat-offset-y", `${numberOrZero(settings.offsetY)}px`);
+    // Roll cards are designed on a 1920px frame; scale them with the stream's actual width.
+    root.style.setProperty("--glus-rc-scale", String((window.innerWidth || 1920) / 1920));
   }
 
   /** Collapse the card toward its corner while it fades and blurs out, then remove it. */
@@ -289,6 +313,11 @@ export class ChatOverlay {
         this.cardsByMessageId.delete(record.messageId);
       }
       this.cards.splice(index, 1);
+      if (record.rollCard) {
+        this.feed.forget(record);
+        record.rollCard.exit();
+        return;
+      }
     }
     if (!card?.isConnected) return;
 
@@ -319,9 +348,14 @@ export class ChatOverlay {
       window.clearTimeout(record.timeout);
       record.resizeObserver?.disconnect();
       record.mirrorObserver?.disconnect();
+      if (record.rollCard) {
+        this.feed.forget(record);
+        record.rollCard.destroy();
+      }
     }
     this.cards = [];
     this.cardsByMessageId.clear();
+    this.feed.clear();
     document.querySelectorAll(".gluniverse-stream-chat-card").forEach(card => {
       remove(card);
       remove(card.querySelector(".gluniverse-stream-chat-sheen"));
@@ -470,41 +504,9 @@ function getSpeakerTokenDocument(speaker) {
     ?? null;
 }
 
-async function waitForDiceAnimation(message) {
-  const hasRoll = Boolean(message?.rolls?.length) || Boolean(message?.isRoll);
-  if (!hasRoll) return delay(120);
-  const messageId = message?.id;
-  const dice3d = game?.dice3d;
-  try {
-    if (messageId && typeof dice3d?.waitFor3DAnimationByMessageID === "function") {
-      await Promise.race([dice3d.waitFor3DAnimationByMessageID(messageId), delay(10000)]);
-      return;
-    }
-  } catch (error) {
-    console.warn(`${MODULE_ID} | Dice animation wait failed`, error);
-  }
-  if (messageId && game.modules?.get("dice-so-nice")?.active) {
-    await waitForDiceSoNiceHook(messageId, 5000);
-    return;
-  }
-  return delay(300);
-}
-
-function waitForDiceSoNiceHook(messageId, timeoutMs) {
-  return new Promise(resolve => {
-    let timeout;
-    const done = () => {
-      window.clearTimeout(timeout);
-      Hooks.off("diceSoNiceRollComplete", hookId);
-      resolve();
-    };
-    const hookId = Hooks.on("diceSoNiceRollComplete", completed => {
-      const completedId = typeof completed === "string" ? completed : completed?.id ?? completed?.messageId;
-      if (completedId !== messageId) return;
-      done();
-    });
-    timeout = window.setTimeout(done, timeoutMs);
-  });
+/** PF2e worlds get the purpose-built roll card; every other system keeps the cloned chat card. */
+function usesRollCards() {
+  return game.system?.id === "pf2e";
 }
 
 function getLatestRenderedMessage(source, message, messageId) {
@@ -527,10 +529,6 @@ function cssEscape(value) {
 function numberOrZero(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
-}
-
-function delay(ms) {
-  return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
 function nextFrame() {

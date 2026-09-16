@@ -272,11 +272,57 @@ Reframing triggers:
 
 - Listen for Foundry's rendered chat HTML on the stream client.
 - Clone the final rendered HTML into the module overlay.
-- Do not rebuild system-specific chat cards.
+- Do not rebuild system-specific chat cards, except for systems with a roll card adapter (PF2e, below).
 - Each card expires independently.
 - If visible cards exceed `maxVisible`, the oldest animates out.
 - Position is one of `top-left`, `top-right`, `bottom-left`, `bottom-right`.
 - `offsetX` and `offsetY` move the overlay in pixels from the selected position.
+
+## PF2e Roll Card
+
+In a PF2e world, the chat overlay does not clone chat cards. It builds a roll card from each new message (`createChatMessage`), and never from chat history re-rendered on load. Plan and decisions: `docs/plans/pf2e-roll-card.md`.
+
+- `scripts/pf2e/snapshot.js` turns the message into a plain snapshot. `scripts/pf2e/read-message.js` (pure, tested against real PF2e 8.4 fixtures in `tests/fixtures/pf2e`) turns that into a card model, or nothing.
+- Shown: d20 checks, spell casts, actions posted from a sheet, and damage rolls. Everything else is hidden.
+- Visibility:
+  - Public messages are shown.
+  - A player's own blind roll is shown with its result, in violet with a Blind chip.
+  - Every other blind, GM-only or whispered message is hidden. Foundry sends these rolls to every client, so the check is the module's.
+- GM rolls use the NPC variant:
+  - The token image, no player name, and the DC is never shown.
+  - The creature and target names follow PF2e's name-visibility setting.
+- The card enters neutral. Its outcome (colour, degree label, die tint, cracks) lands only after the total finishes counting.
+- A check with no DC shows "Result". A natural 20 or 1 still cracks gold or red.
+- Cracks:
+  - Critical success cracks gold. Critical failure cracks red. A blind roll cracks violet.
+  - The shader is `scripts/fx/crack-glsl.js`, copied from gluniverse-foundry-modules, and is drawn by one shared offscreen PIXI renderer.
+  - If WebGL is unavailable, the card falls back to a glowing hairline.
+- Merging:
+  - Damage joins the on-screen card whose message has the same `flags.pf2e.origin.uuid`, within 60 seconds.
+  - A check joins a cast card of the same spell.
+  - Either merge restarts the card's lifetime.
+- Rerolls: PF2e deletes the old message and posts a new one. The deleted check card waits 2 seconds for a reroll with the same speaker, check type and statistic, then rewrites itself with a Reroll chip.
+- Lifetime and stacking: roll cards share `lifetimeMs` and `maxVisible` with cloned cards. Critical success and failure cards last `critLifetimeMultiplier` times longer (default 1.5).
+- Roll cards ignore reduced-motion preferences.
+
+### Portrait framing
+
+- Card art is shown through a feathered frame. Which part of the picture shows is decided in this order:
+  1. A GM's focus point, saved per image in the actor flag `portraitFocus` as `[{src, x, y, w}]`.
+  2. A face found by MediaPipe's BlazeFace model.
+  3. smartcrop's content-aware pick.
+  4. The default crop: full width, near the top.
+- A focus is `{x, y, w}` in image widths; the height follows from the art's 8.2:4.4 aspect (`scripts/framing/focus-math.js`, unit tested).
+- Face detection:
+  - Runs on the whole image and on zoomed windows over its upper 75%, so small faces in full-body art are found.
+  - Overlapping hits merge into votes. A face needs a score of at least 0.75, or 3+ votes at 0.45 or more, and must sit in the top half of tall art.
+  - PF2e iconics: faces found in 33/36 portraits and 31/36 tokens.
+- Where it runs (`scripts/framing/portrait-framer.js`):
+  - Only on the stream client, one image at a time, yielding between windows so animations do not hitch.
+  - Results are cached in memory and in `localStorage`, keyed by image path. A load or CORS failure is not persisted.
+  - Party members, player characters and combatants are pre-scanned when stream mode starts and when combat changes. A card whose art is not analysed yet shows the default crop and glides to its framing when the analysis lands.
+- The GM edits focus points in Director → Frame Portraits (`scripts/framing/portrait-framing-app.js`): drag to pan, scroll or slider to zoom, with a live card preview.
+- The vendored MediaPipe bundle carries one patch so its loader ignores Foundry's global `Module` (`scripts/vendor/mediapipe/PATCHES.md`).
 
 ## Dialog Overlay
 

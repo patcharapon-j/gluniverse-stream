@@ -17,6 +17,7 @@ import {
   isDirectorUser,
   setSetting
 } from "./settings.js";
+import { openPortraitFramingApp } from "./framing/portrait-framing-app.js";
 import { getStreamClientStatus, requestStreamClientStatus, sendStreamCommand } from "./socket.js";
 
 let services = {};
@@ -252,6 +253,8 @@ class StreamDirectorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         return this.#setAutoStart(true);
       case "revoke-auto-start":
         return this.#setAutoStart(false);
+      case "portrait-framing":
+        return openPortraitFramingApp();
       case "reframe":
         requestStreamClientStatus();
         return services.camera?.requestReframe({ force: true });
