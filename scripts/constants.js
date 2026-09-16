@@ -66,7 +66,9 @@ export const DEFAULT_CHAT_SETTINGS = {
   offsetX: 0,
   offsetY: 0,
   lifetimeMs: 10000,
-  maxVisible: 5
+  maxVisible: 5,
+  /** PF2e roll cards: critical success and critical failure cards stay up this many times longer. */
+  critLifetimeMultiplier: 1.5
 };
 
 export const DEFAULT_DIALOG_SETTINGS = {
