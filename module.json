@@ -20,7 +20,10 @@
     "scripts/main.js"
   ],
   "styles": [
-    "styles/stream.css"
+    "styles/stream.css",
+    "styles/fonts.css",
+    "styles/etched-glass.css",
+    "styles/roll-card.css"
   ],
   "languages": [
     {
